@@ -10,7 +10,7 @@ class pluginMgr(QtGui.QWidget):
     ERROR_PROCESSING_REPOSITORY_STR = "Error processing repository"
     REMOTE_REPO_INDEX_ERROR_STR = "Error reading remote repository index"
     REPOSITORY_LISTED_STR = "Repository Listed"
-    LOCAL_REPO_STR = "Local Repository"
+    LOCAL_REPO_STR = "Local Plugin Directory"
     LOCAL_DIR_DEFAULT_STR = "knos_plg"
     LOCAL_DIR_NOT_EXISTS_STR = "Local directory not exists! Create?"
     CANNOT_CREATE_DIR_STR = "Cannot create directory:\n"
