@@ -205,7 +205,7 @@ Operation:
 - Enter a URL for a remote repository, or use the default one
 - Then List to enumerate remote plugins in repository
 - Python files (.py extension) are defined as Knossos plugin files by metadata lines of format
-#KNOSSOS_PLUGIN <Field Name (without whitespaces)> <Content>
+ #KNOSSOS_PLUGIN <Field Name (without whitespaces)> <Content>
 - Mandatory metadata fields are Name, Version, Description. Absence of any disqualifies the file as plugin
 - All metadata fields are shown to the right when a plugin is clicked
 - Double-click a plugin to show its content, execute using python evaluation
