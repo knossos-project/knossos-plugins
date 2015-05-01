@@ -11,8 +11,8 @@ class overlayPainter(QtGui.QWidget):
     TIMER_BUTTON_STRS = ["Paused", "Works"]
     def __init__(self, parent=None):
         # Logic
-        self.newRadius = self.radius = 20
-        self.newPos = self.position = knossos.getPosition()
+        self.radius = 20
+        self.position = knossos.getPosition()
         self.coords = {}
         self.orig = self.emptyData()
         self.ours = self.emptyData()
@@ -112,17 +112,15 @@ class overlayPainter(QtGui.QWidget):
         self.positionLabel.text = "%d,%d,%d" % self.position
         return
 
-    def restart(self):
+    def restart(self, newPos, newRadius):
         self.cleanPosition()
-        self.position = self.newPos
-        self.radius = self.newRadius
+        self.position = newPos
+        self.radius = newRadius
         self.startPosition()
         return
 
     def knossosMiddleButtonRelease(self, eocd, coord, vpId, event):
-        self.newPos = self.coord2pos(coord)
-        self.newRadius = self.radius
-        self.restart()
+        self.restart(self.coord2pos(coord), self.radius)
         return
 
     def knossosMouseHover(self, eocd, coord, subObjId, vpId, event):
@@ -130,9 +128,7 @@ class overlayPainter(QtGui.QWidget):
         return
 
     def setRadiusSlot(self):
-        self.newRadius = int(self.radiusEdit.text)
-        self.newPos = self.position
-        self.restart()
+        self.restart(self.position, int(self.radiusEdit.text))
         return
 
     def timerButtonToggledSlot(self):
@@ -147,9 +143,10 @@ class overlayPainter(QtGui.QWidget):
         return
 
     def setIntervalSlot(self):
-        self.stopTimer()
         self.timer.setInterval(int(self.interval.text))
-        self.startTimer()
+        if self.timerButton.isChecked():
+            self.stopTimer()
+            self.startTimer()
         return
 
     def updateR(self):
