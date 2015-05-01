@@ -5,7 +5,7 @@ import numpy
 
 #KNOSSOS_PLUGIN Name OverlayFun
 #KNOSSOS_PLUGIN Version 1
-#KNOSSOS_PLUGIN Constantly paints and unpaints radial overlay circles at position selected by mouse middle-click
+#KNOSSOS_PLUGIN Description Constantly paints and unpaints radial overlay circles at position selected by mouse middle-click
 
 class overlayPainter(QtGui.QWidget):
     TIMER_BUTTON_STRS = ["Paused", "Works"]
