@@ -46,9 +46,16 @@ class overlayPainter(QtGui.QWidget):
         # Connect knossos signals
         signalRelay.Signal_EventModel_handleMouseReleaseMiddle.connect(self.knossosMiddleButtonRelease)
         signalRelay.Signal_EventModel_handleMouseHover.connect(self.knossosMouseHover)
+        signalRelay.Signal_MainWindow_closeEvent.connect(self.knossosClose)
         # Kick-off
         self.show()
         self.startPosition()
+        return
+
+    def knossosClose(self, eocd, event):
+        self.stopTimer()
+        self.cleanPosition()
+        self.close()
         return
 
     def emptyData(self):
@@ -76,7 +83,7 @@ class overlayPainter(QtGui.QWidget):
         for curR in self.coords:
             for pos in self.coords[curR]:
                 knossos.writeOverlayVoxel(*(pos + (self.orig[self.posOffset(pos)],)))
-        knossos_global_viewer.oc_reslice_notify()
+        knossos_global_viewer.oc_reslice_notify_visible()
         return
 
     def stopTimer(self):
@@ -167,7 +174,7 @@ class overlayPainter(QtGui.QWidget):
     def writeOverlay(self):
         for pos in self.coords[self.R]:
             knossos.writeOverlayVoxel(*(pos + (self.data[self.posOffset(pos)],)))
-        knossos_global_viewer.oc_reslice_notify()
+        knossos_global_viewer.oc_reslice_notify_visible()
         return
     
     def timerSlot(self):
