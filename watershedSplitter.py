@@ -13,8 +13,8 @@ class watershedSplitter(QtGui.QWidget):
     INSTRUCTION_TEXT_STR = """Fill configuration:
 - Pick membrane prediction dataset by browsing to directory of knossos.conf
 - Base subobject ID for subobjects to be created
-- Subobject ID and comment for slack
 - Beginning and size of work area as an x,y,z blank-separated tuples
+- Margin size for actual algorithm (would not be eventually projected to knossos)
 - Algorithmic parameters
 
 Operation:
@@ -31,8 +31,6 @@ Operation:
     MAGIC_TREE_NUM = 99999999
     
     def initGUI(self):
-        self.twiHeadersList = []
-        self.twiHash = {}
         self.setWindowTitle("Watershed Splitter")
         layout = QtGui.QVBoxLayout()
         self.setLayout(layout)
@@ -62,6 +60,9 @@ Operation:
         workAreaLayout.addWidget(QtGui.QLabel("Size"))
         self.workAreaSizeEdit = QtGui.QLineEdit()
         workAreaLayout.addWidget(self.workAreaSizeEdit)
+        workAreaLayout.addWidget(QtGui.QLabel("Margin"))
+        self.marginEdit = QtGui.QLineEdit()
+        workAreaLayout.addWidget(self.marginEdit)
         workAreaLayout.addWidget(QtGui.QLabel("Marker Radius"))
         self.markerRadiusEdit = QtGui.QLineEdit()
         workAreaLayout.addWidget(self.markerRadiusEdit)
@@ -76,6 +77,10 @@ Operation:
         paramsLayout.addWidget(QtGui.QLabel("Min Obj Size"))
         self.minObjSizeEdit = QtGui.QLineEdit()
         paramsLayout.addWidget(self.minObjSizeEdit)
+        paramsLayout.addWidget(QtGui.QLabel("Use Slack"))
+        self.isSlackCheckBox = QtGui.QCheckBox()
+        self.isSlackCheckBox.setChecked(False)
+        paramsLayout.addWidget(self.isSlackCheckBox)
         opButtonsLayout = QtGui.QHBoxLayout()
         layout.addLayout(opButtonsLayout)
         self.beginButton = QtGui.QPushButton("Begin")
@@ -95,13 +100,23 @@ Operation:
         opButtonsLayout.addWidget(self.finishButton)
         subObjTableGroupBox = QtGui.QGroupBox("SubObjects")
         layout.addWidget(subObjTableGroupBox)
-        subObjTableLayout = QtGui.QHBoxLayout()
+        subObjTableLayout = QtGui.QGridLayout()
         subObjTableGroupBox.setLayout(subObjTableLayout)
         self.subObjTable = QtGui.QTableWidget()
-        subObjTableLayout.addWidget(self.subObjTable)
+        subObjTableLayout.addWidget(QtGui.QLabel("Pending"),0,0)
+        subObjTableLayout.addWidget(self.subObjTable,1,0)
         self.setTableHeaders(self.subObjTable, self.OBJECT_LIST_COLUMNS)
         self.subObjTable.cellClicked.connect(self.subObjTableCellClicked)
+        self.subObjTable.itemSelectionChanged.connect(self.subObjTableSelectionChanged)
+        self.subObjTable.cellDoubleClicked.connect(self.subObjTableCellDoubleClicked)
         self.finalizeTable(self.subObjTable)
+        self.doneSubObjTable = QtGui.QTableWidget()
+        subObjTableLayout.addWidget(QtGui.QLabel("Done"),0,1)
+        subObjTableLayout.addWidget(self.doneSubObjTable,1,1)
+        self.setTableHeaders(self.doneSubObjTable, self.OBJECT_LIST_COLUMNS)
+        self.doneSubObjTable.cellClicked.connect(self.doneSubObjTableCellClicked)
+        self.doneSubObjTable.cellDoubleClicked.connect(self.doneSubObjTableCellDoubleClicked)
+        self.finalizeTable(self.doneSubObjTable)
         # Show
         self.setWindowFlags(Qt.Qt.Window)
         self.show()
@@ -130,21 +145,29 @@ Operation:
     def loadConfig(self):
         settings = Qt.QSettings()
         settings.beginGroup(self.pluginConf)
-        for (edit,key,default) in self.settings:
+        for (widget,key,default) in self.settings:
             val = settings.value(key)
             if (val == None) or (str(val)==""):
                 val_str = default
             else:
                 val_str = str(val)
-            edit.text = val_str
+            if type(default)==type("a"):
+                widget.text = val_str
+            elif type(default)==type(True):
+                widget.setChecked(bool(int(val_str)))
+        # TODO Slack Checkbox
         settings.endGroup()
         return
 
     def saveConfig(self):
         settings = Qt.QSettings()
         settings.beginGroup(self.pluginConf)
-        for (edit,key,default) in self.settings:
-            settings.setValue(key,str(edit.text))
+        for (widget,key,default) in self.settings:
+            if type(default)==type("a"):
+                val_str = str(widget.text)
+            elif type(default)==type(True):
+                val_str = str(int(widget.isChecked()))
+            settings.setValue(key,val_str)
         settings.endGroup()
         return
 
@@ -166,9 +189,11 @@ Operation:
                         (self.baseSubObjIdEdit,"BASE_SUB_OBJ_ID","10000000"), \
                         (self.workAreaBeginEdit,"WORK_AREA_BEGIN",str(knossos.getPosition())), \
                         (self.workAreaSizeEdit,"WORK_AREA_SIZE",str(tuple([knossos.getCubeEdgeLength()]*3))), \
+                        (self.marginEdit,"MARGIN","10"), \
                         (self.markerRadiusEdit,"MARKER_RADIUS","10"), \
                         (self.memThresEdit,"MEM_THRES","150"), \
-                        (self.minObjSizeEdit,"MIN_OBJ_SIZE","500")]
+                        (self.minObjSizeEdit,"MIN_OBJ_SIZE","500"),
+                       (self.isSlackCheckBox,"IS_SLACK",False)]
         self.loadConfig()
         self.signalConns = []
         self.signalConns.append((signalRelay.Signal_EventModel_handleMouseReleaseMiddle, self.handleMouseReleaseMiddle))
@@ -182,18 +207,12 @@ Operation:
         return
 
     def closeEventYes(self,event):
-        self.finishButtonClicked()
-        self.uninitLogic()
-        event.accept()
-        return
-    
-    def closeEventNo(self,event):
         self.resetButtonClicked()
         self.uninitLogic()
         event.accept()
         return
     
-    def closeEventAbort(self,event):
+    def closeEventNo(self,event):
         event.ignore()
         return
     
@@ -203,10 +222,13 @@ Operation:
             event.accept()
             return
         mb = QtGui.QMessageBox()
-        yes = QtGui.QMessageBox.No; no = QtGui.QMessageBox.No; abort = QtGui.QMessageBox.Abort
-        mb.setStandardButtons(yes | no | abort)
-        action = {yes: self.closeEventYes, no: self.closeEventNo, abort: self.closeEventAbort}
-        action[mb._exec(self, "Closing while active!", "Save?", yes|no|abort)](event);
+        yes = QtGui.QMessageBox.Yes; no = QtGui.QMessageBox.No
+        mb.setStandardButtons(yes | no)
+        mb.setText("Closing while active!")
+        mb.setInformativeText("This will reset, proceed?")
+        mb.setStandardButtons(yes|no)
+        action = {yes: self.closeEventYes, no: self.closeEventNo}
+        action[mb.exec_()](event);
         return
 
     def setTableHeaders(self, table, columnNames):
@@ -215,12 +237,11 @@ Operation:
         for i in xrange(columnNum):
             twi = QtGui.QTableWidgetItem(columnNames[i])
             table.setHorizontalHeaderItem(i, twi)
-            self.twiHeadersList.append(twi)
         return
 
-    def clearTable(self, table):
+    def clearTable(self, tableIsDone):
+        table = self.tableHash[tableIsDone]["Table"]
         table.clearContents()
-        del self.twiHash.setdefault(table,[])[:]
         table.setRowCount(0)
         return
 
@@ -237,7 +258,6 @@ Operation:
         for i in xrange(len(columnTexts)):
             twi = QtGui.QTableWidgetItem(columnTexts[i])
             twi.setFlags(twi.flags() & (~Qt.Qt.ItemIsEditable))
-            self.twiHash.setdefault(table,[]).append(twi)
             table.setItem(rowIndex, i, twi)
         self.resizeTable(table)
         return
@@ -276,92 +296,184 @@ Operation:
     def firstId(self):
         l = self.mapIdToCoord.keys()
         if len(l) == 0:
-            return -1
+            return self.invalidId
         return min(l)
 
-    def subObjTableCellClicked(self, row, col):
-        Id = long(self.subObjTable.item(row,0).text())
-        self.setCurObjId(Id)
-        return
+    def IdFromRow(self, tableIsDone, row):
+        table = self.tableHash[tableIsDone]["Table"]
+        if (row > table.rowCount) or (row < 0):
+            return self.invalidId
+        return long(table.item(row,0).text())
 
-    def jumpToId(self, Id):
-        coord = self.mapIdToCoord[Id]
-        knossos.setPosition(coord)
-        return
-
-    def setCurObjId(self,Id):
-        self.jumpToId(Id)
-        if Id == self.curObjId:
-            return
-        self.undoButton.enabled = False
-        self.prevObjId = self.curObjId
-        self.curObjId = Id
-        if Id <> self.slackObjId:
-            skeleton.set_active_node(self.subObjIdToNodeId(Id))
-        self.applyMask()
-        return
-
-    def coordOffset(self,coord):
-        return tuple(numpy.array(coord)-self.beginCoord_arr)
-
-    def calcWS(self):
-        return watershed(self.slackMemPred, self.seedMatrix, None, None, self.WS_mask)
-
-    def countVal(self,matrix,val):
-        return numpy.sum(matrix==val)
-
-    def isEmpty(self):
-        return len(self.mapCoordToId) == 0
-
-    def getObjIdTableRow(self, Id):
-        for row in xrange(self.subObjTable.rowCount):
-            if Id == long(self.subObjTable.item(row,0).text()):
+    def RowFromId(self, tableIsDone, Id):
+        table = self.tableHash[tableIsDone]["Table"]
+        for row in xrange(table.rowCount):
+            if self.IdFromRow(tableIsDone, row) == Id:
                 return row
-        return -1
+        return self.invalidRow
 
-    def reselectObjId(self, Id):
-        # ERASE?
-        self.setCurObjId(Id)
-        self.subObjTable.selectRow(self.getObjIdTableRow(Id))
+    def pushTableStackId(self, tableIsDone, Id, atFirst = False):
+        stack = self.tableHash[tableIsDone]["Stack"]
+        if len(stack) == 0:
+            stack.append(Id)
+            return self.invalidId
+        prevLastId = stack[-1]
+        if prevLastId <> Id:
+            if Id in stack:
+                stack.remove(Id)
+            if atFirst:
+                stack[:0] = [Id]
+            else:
+                stack.append(Id)
+        return prevLastId
+
+    def popTableStackId(self, tableIsDone, Id):
+        stack = self.tableHash[tableIsDone]["Stack"]
+        if Id in stack:
+            stack.remove(Id)
+        if len(stack) == 0:
+            return self.invalidId
+        return stack[-1]
+
+    def selectObjId(self, Id):
+        self.undoButton.enabled = False
+        self.curObjId = Id
+        self.applyMask()
+        if (Id == self.invalidId) or (Id == self.slackObjId):
+            return
+        skeleton.set_active_node(self.subObjIdToNodeId(Id))
+        self.jumpToId(Id)
+        return
+
+    def subObjTableSelectionChanged(self):
+        if not self.active:
+            return
+        if self.onChange:
+            return
+        rows = self.subObjTable.selectionModel().selectedRows()
+        if len(rows) == 0:
+            return
+        row = rows[0].row()
+        isDone = False
+        if self.curObjId <> self.IdFromRow(isDone,row):
+            self.subObjTableCellClicked(row,0)
+        return
+
+    def selectRowWrap(self,table,row):
+        self.onChange = True
+        table.selectRow(row)
+        self.onChange = False
+        return
+
+    def subObjTableCellClicked(self, row, col):
+        isDone = False
+        table = self.tableHash[isDone]["Table"]
+        Id = self.IdFromRow(isDone, row)
+        prev = self.pushTableStackId(isDone, Id)
+        if prev <> Id:
+            self.selectRowWrap(table,row)
+        if self.curObjId == Id:
+            self.jumpToId(Id)
+            return
+        self.selectObjId(Id)
+        return
+
+    def tableCellDoubleClickedCommon(self, tableSrcIsDone, row):
+        self.undoButton.enabled = False
+        tableDestIsDone = not tableSrcIsDone
+        tableSrc = self.tableHash[tableSrcIsDone]["Table"]
+        tableDest = self.tableHash[tableDestIsDone]["Table"]
+        Id = self.IdFromRow(tableSrcIsDone, row)
+        self.mapIdToDone[Id] = not self.mapIdToDone[Id]
+        return Id
+
+    def subObjTableCellDoubleClicked(self, row, col):
+        isDone = False
+        Id = self.tableCellDoubleClickedCommon(isDone, row)
+        newSrcTopId = self.popTableStackId(isDone,Id)
+        self.selectObjId(newSrcTopId)
+        self.refreshTables()
+        return
+
+    def doneSubObjTableCellClicked(self, row, col):
+        isDone = True
+        self.jumpToId(self.IdFromRow(isDone,row))
+        self.doneSubObjTable.clearSelection()
+        self.doneSubObjTable.clearFocus()
+        return
+
+    def doneSubObjTableCellDoubleClicked(self, row, col):
+        isDone = True
+        Id = self.tableCellDoubleClickedCommon(isDone, row)
+        prevLastId = self.pushTableStackId(not isDone,Id,atFirst=True)
+        self.refreshTables()
+        if prevLastId == self.invalidId:
+            self.subObjTableCellClicked(self.RowFromId(not isDone, Id),0)
+        else:
+            self.jumpToId(self.curObjId)
         return
     
+    def applyMask(self):
+        self.WS_mask_prev[:,:,:] = self.WS_mask[:,:,:]
+        self.WS_mask = (self.WS == self.curObjId)
+        self.WS_masked.fill(0)
+        self.WS_masked[self.WS_mask] = self.WS[self.WS_mask]
+        self.writeWS(self.WS_masked)
+        return
+
     def addSeed(self, coord, vpId):
         coord_offset = self.coordOffset(coord)
         Id = self.nextId()
         if self.WS_mask[coord_offset] == False:
             self.jumpToId(self.WS[coord_offset])
             return
+        if (self.lastObjId <> self.invalidId) and (self.curObjId == self.invalidId):
+            QtGui.QMessageBox.information(0, "Error", "Select seed first!")
         self.seedMatrix[coord_offset] = Id
         parentId = self.WS[coord_offset]
         WS_temp = self.calcWS()
-        if min(self.countVal(WS_temp,Id), self.countVal(WS_temp,parentId)) < self.minObjSize:
-            QtGui.QMessageBox.information(0, "Error", "Object too small!")
+        newObjSize = self.countVal(WS_temp,Id)
+        if newObjSize < self.minObjSize:
+            QtGui.QMessageBox.information(0, "Error", "New object size (%d) smaller than minimum!" % newObjSize)
             self.seedMatrix[coord_offset] = 0
             return
-        self.lastObjId = Id
+        if parentId <> self.invalidId:
+            parentObjSize = self.countVal(WS_temp,parentId)
+            if parentObjSize < self.minObjSize:
+                QtGui.QMessageBox.information(0, "Error", "Parent object size (%d) smaller than minimum!" % parentObjSize)
+                self.seedMatrix[coord_offset] = 0
+                return
+        isDone = False
         self.WS[self.WS_mask] = WS_temp[self.WS_mask]
         self.mapCoordToId[coord] = Id
         self.mapIdToCoord[Id] = coord
+        self.mapIdToDone[Id] = isDone
         skeleton.add_node(*((Id,)+coord+(self.MAGIC_TREE_NUM,self.markerRadius,vpId,)))
-        rowSelection = self.refreshTable()
+        self.refreshTable(isDone)
+        if self.lastObjId == self.invalidId:
+            self.subObjTableCellClicked(0,0)
+        else:
+            self.undoButton.enabled = True
+            self.pushTableStackId(isDone,Id,atFirst=True)
+        self.lastObjId = Id
         self.applyMask()
-        self.subObjTable.selectRow(rowSelection)
-        self.undoButton.enabled = True
         return
 
-    def getSortedMapItems(self):
-        IdCoordTuples = self.mapIdToCoord.items()
-        IdCoordTuples.sort()
-        return IdCoordTuples
-    
-    def refreshTable(self):
-        row = self.subObjTable.currentRow()
-        self.clearTable(self.subObjTable)
+    def refreshTable(self, tableIsDone):
+        table = self.tableHash[tableIsDone]["Table"]
+        self.clearTable(tableIsDone)
         for (Id,coord) in self.getSortedMapItems():
-            self.addTableRow(self.subObjTable, [str(Id), str(coord)], atEnd = True)
-        return row
-
-    def removeSeed(self,Id):
+            if self.mapIdToDone[Id] == tableIsDone:
+                self.addTableRow(table, [str(Id), str(coord)], atEnd = True)
+        stack = self.tableHash[tableIsDone]["Stack"]
+        if (len(stack) > 0) and (tableIsDone == False):
+            self.selectRowWrap(table,self.RowFromId(tableIsDone, stack[-1]))
+        return
+    
+    def undoSeed(self,Id):
+        if Id == self.slackObjId:
+            QtGui.QMessageBox.information(0, "Error", "Don't remove slack!")
+            return
         coord = self.mapIdToCoord[Id]
         self.seedMatrix[self.coordOffset(coord)] = 0
         self.WS_mask[:,:,:] = self.WS_mask_prev[:,:,:]
@@ -370,10 +482,37 @@ Operation:
         self.applyMask()
         del self.mapCoordToId[coord]
         del self.mapIdToCoord[Id]
+        self.popTableStackId(self.mapIdToDone[Id], Id)
+        del self.mapIdToDone[Id]
+        self.refreshTable(False)
         skeleton.delete_node(Id)
-        rowSelection = self.refreshTable()
-        self.subObjTable.selectRow(rowSelection)
         return
+
+    def refreshTables(self):
+        map(self.refreshTable, [False,True])
+        return
+
+    def getSortedMapItems(self):
+        IdCoordTuples = self.mapIdToCoord.items()
+        IdCoordTuples.sort()
+        return IdCoordTuples
+
+    def jumpToId(self, Id):
+        coord = self.mapIdToCoord[Id]
+        knossos.setPosition(coord)
+        return
+
+    def coordOffset(self,coord):
+        return tuple(self.margin + numpy.array(coord) - self.knossos_beginCoord_arr)
+
+    def calcWS(self):
+        return watershed(self.distMemPred, self.seedMatrix, None, None, self.WS_mask)
+
+    def countVal(self,matrix,val):
+        return numpy.sum(matrix==val)
+
+    def isEmpty(self):
+        return len(self.mapCoordToId) == 0
 
     def handleMouseReleaseMiddle(self, eocd, clickedCoord, vpId, event):
         if not self.active:
@@ -382,16 +521,8 @@ Operation:
         self.addSeed(coord,vpId)
         return
 
-    def applyMask(self):
-        self.WS_mask_prev[:,:,:] = self.WS_mask[:,:,:]
-        self.WS_mask = (self.WS == self.curObjId)
-        self.WS_masked.fill(0)
-        self.WS_masked[self.WS_mask] = self.WS[self.WS_mask]
-        self.writeMatrix(self.WS_masked)
-        return
-
     def undoButtonClicked(self):
-        self.removeSeed(self.lastObjId)
+        self.undoSeed(self.lastObjId)
         self.undoButton.enabled = False
         return
 
@@ -415,14 +546,19 @@ Operation:
         return matrix.__array_interface__["data"][0]
 
     def accessMatrix(self, matrix, isWrite):
-        return knossos.processRegionByStridedBufProxy(list(self.beginCoord_arr), list(self.dims_arr), self.npDataPtr(matrix), matrix.strides, isWrite, True)
+        return knossos.processRegionByStridedBufProxy(list(self.knossos_beginCoord_arr), list(self.knossos_dims_arr), self.npDataPtr(matrix), matrix.strides, isWrite, True)
 
     def writeMatrix(self, matrix):
         self.accessMatrix(matrix, True)
         return
 
-    def newMatrix(self):
-        return numpy.ndarray(shape=self.dims_arr, dtype="uint64")
+    def writeWS(self, matrix):
+        self.writeMatrix(matrix[self.margin:-self.margin,self.margin:-self.margin,self.margin:-self.margin])
+
+    def newMatrix(self,dims=None):
+        if dims == None:
+            dims = self.dims_arr
+        return numpy.ndarray(shape=dims, dtype="uint64")
 
     def newValMatrix(self, val):
         matrix = self.newMatrix()
@@ -437,7 +573,7 @@ Operation:
         skeleton.delete_tree(self.MAGIC_TREE_NUM)
         knossos.resetMovementArea()
         self.active = False
-        self.clearTable(self.subObjTable)
+        map(self.clearTable,[False,True])
         self.guiEnd()
         self.endMatrices()
         return
@@ -447,6 +583,7 @@ Operation:
         self.beginButton.enabled = False
         self.resetButton.enabled = True
         self.finishButton.enabled = True
+        self.onChange = False
         return
 
     def guiEnd(self):
@@ -458,74 +595,89 @@ Operation:
         return
 
     def beginMatrices(self):
-        self.memPred = self.loadMembranePrediction(self.validateDir(str(self.dirEdit.text)), self.beginCoord_arr, self.dims_arr)
-        self.orig = self.newValMatrix(0)
+        self.orig = self.newMatrix(dims=self.knossos_dims_arr)
         self.readMatrix(self.orig)
-        self.WS = self.newValMatrix(0)
-        self.WS_mask = (self.WS == 0)
-        self.WS_mask_prev = (self.WS == 0)
-        self.WS_masked = self.newValMatrix(0)
-        self.writeMatrix(self.WS)
+        self.WS = self.newValMatrix(self.invalidId)
+        self.WS_mask = (self.WS == self.invalidId)
+        self.WS_mask_prev = (self.WS == self.invalidId)
+        self.WS_masked = self.newValMatrix(self.invalidId)
+        self.memPred = self.loadMembranePrediction(self.validateDir(str(self.dirEdit.text)), self.beginCoord_arr, self.dims_arr)
+        self.distMemPred = -ndimage.distance_transform_edt(self.memPred)
+        if self.isSlack:
+            self.distMemPred += -ndimage.distance_transform_edt(numpy.invert(self.memPred))
+            # use this matrix and add the manual seeds on top of it
+            self.seedMatrix = ndimage.morphology.binary_erosion(numpy.invert(self.memPred), iterations=5) * self.slackObjId
+        else:
+            self.seedMatrix = self.newValMatrix(0)
+        self.writeWS(self.WS)
         return
 
     def endMatrices(self):
         del self.orig
+        del self.WS_mask
+        del self.WS_mask_prev
         del self.WS
         del self.seedMatrix
         del self.memPred
-        return
-
-    def beginSeeds(self):
-        self.mapCoordToId = {}
-        self.mapIdToCoord = {}
-        self.curObjId = self.slackObjId
-        self.prevObjId = -1
-        skeleton.add_tree(self.MAGIC_TREE_NUM)
-        return
-
-    def applySlack(self):
-        dt_objects_ws = -ndimage.distance_transform_edt(self.memPred)
-        dt_slack = -ndimage.distance_transform_edt(numpy.invert(self.memPred))
-        self.slackMemPred = dt_slack + dt_objects_ws
-        # use this matrix and add the manual seeds on top of it
-        Id = self.slackObjId
-        self.seedMatrix = ndimage.morphology.binary_erosion(numpy.invert(self.memPred), iterations=5) * Id
-        # Apply
-        WS_temp = self.calcWS()
-        self.WS[self.WS_mask] = WS_temp[self.WS_mask]
-        coord = (-1,-1,-1)
-        self.mapCoordToId[coord] = Id
-        self.mapIdToCoord[Id] = coord
-        rowSelection = 0
-        self.refreshTable()
-        self.subObjTableCellClicked(0,0)
-        self.applyMask()
-        self.subObjTable.selectRow(rowSelection)
+        del self.distMemPred
         return
 
     def clickSubObjs(self):
         for (Id, coord) in self.mapIdToCoord.items():
             segmentation.clickSubObj(Id, coord)
         return
+
+    def beginSeeds(self):
+        self.curObjId = self.invalidId
+        self.lastObjId = self.invalidId
+        self.mapCoordToId = {}
+        self.mapIdToCoord = {}
+        self.mapIdToDone = {}
+        skeleton.add_tree(self.MAGIC_TREE_NUM)
+        return
+    
+    def beginSlack(self):
+        Id = self.slackObjId
+        coord = (-1,-1,-1)
+        self.WS = self.calcWS()
+        isDone = False
+        self.mapCoordToId[coord] = Id
+        self.mapIdToCoord[Id] = coord
+        self.mapIdToDone[Id] = isDone
+        self.refreshTable(isDone)
+        self.lastObjId = self.slackObjId
+        self.subObjTableCellClicked(0,0)
+        self.applyMask()
+        return
     
     def beginButtonClicked(self):
         retVal = True
         try:
             self.slackObjId = 1
-            self.dims_arr = numpy.array(self.str2tripint(str(self.workAreaSizeEdit.text)))
+            self.invalidId = 0
+            assert(self.slackObjId <> self.invalidId)
+            self.invalidRow = -1
+            # parse edits
+            self.margin = int(self.marginEdit.text)
+            self.knossos_dims_arr = numpy.array(self.str2tripint(str(self.workAreaSizeEdit.text)))
+            self.dims_arr = self.knossos_dims_arr + (2*self.margin)
             self.baseSubObjId = long(str(self.baseSubObjIdEdit.text))
             self.markerRadius = int(self.markerRadiusEdit.text)
             self.minObjSize = int(self.minObjSizeEdit.text)
             self.memThres = int(self.memThresEdit.text)
-            self.beginCoord_arr = numpy.array(self.str2tripint(str(self.workAreaBeginEdit.text)))
-            self.endCoord_arr = self.beginCoord_arr + self.dims_arr - 1
+            self.isSlack = self.isSlackCheckBox.isChecked()
+            self.knossos_beginCoord_arr = numpy.array(self.str2tripint(str(self.workAreaBeginEdit.text)))
+            self.beginCoord_arr = self.knossos_beginCoord_arr - self.margin
+            self.knossos_endCoord_arr = self.knossos_beginCoord_arr + self.knossos_dims_arr - 1
             self.beginMatrices()
-            self.beginSeeds()
-            knossos.setPosition(tuple((self.beginCoord_arr + self.endCoord_arr) / 2))
-            knossos.setMovementArea(list(self.beginCoord_arr), list(self.endCoord_arr))
+            knossos.setPosition(tuple((self.knossos_beginCoord_arr + self.knossos_endCoord_arr) / 2))
+            knossos.setMovementArea(list(self.knossos_beginCoord_arr), list(self.knossos_endCoord_arr))
+            self.tableHash = {True:{"Stack":[],"Table":self.doneSubObjTable},False:{"Stack":[],"Table":self.subObjTable}}
             self.guiBegin()
+            self.beginSeeds()
+            if self.isSlack:
+                self.beginSlack()
             self.active = True
-            self.applySlack()
         except:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             inf = "\n".join(traceback.format_exception(exc_type, exc_value, exc_traceback))
@@ -539,7 +691,7 @@ Operation:
         return
 
     def finishButtonClicked(self):
-        self.writeMatrix(self.WS)
+        self.writeWS(self.WS)
         self.clickSubObjs()
         self.commonEnd()
         return
