@@ -1,5 +1,5 @@
 from PythonQt import QtGui, Qt
-import DatasetUtils, numpy, os, re, string, sys, traceback
+import DatasetUtils, numpy, os, re, string, sys, traceback, Image
 from scipy import ndimage
 from skimage.morphology import watershed
 DatasetUtils._set_noprint(True)
@@ -27,9 +27,21 @@ Operation:
     SUBOBJECT_TABLE_GROUP_STR = "Subobject Table"
     SUBOBJECT_ID_COLUMN_STR = "ID"
     SUBOBJECT_COORD_COLUMN_STR = "Coordinate"
-    OBJECT_LIST_COLUMNS = [SUBOBJECT_ID_COLUMN_STR, SUBOBJECT_COORD_COLUMN_STR]
-    MAGIC_TREE_NUM = 99999999
-    
+    SUBOBJECT_MORE_COORDS_COLUMN_STR = "Subseeds Coordinates"
+    OBJECT_LIST_COLUMNS = [SUBOBJECT_ID_COLUMN_STR, SUBOBJECT_COORD_COLUMN_STR, SUBOBJECT_MORE_COORDS_COLUMN_STR]
+
+    class MyTableWidget(QtGui.QTableWidget):
+        def __init__(self, f, parent=None):
+            QtGui.QTableWidget.__init__(self,parent)
+            self._f = f
+            return
+
+        def keyPressEvent(self, event):
+            if event.key() == Qt.Qt.Key_Delete:
+                self._f()
+            return QtGui.QTableWidget.keyPressEvent(self,event)
+        pass
+
     def initGUI(self):
         self.setWindowTitle("Watershed Splitter")
         layout = QtGui.QVBoxLayout()
@@ -79,14 +91,19 @@ Operation:
         paramsLayout.addWidget(self.minObjSizeEdit)
         paramsLayout.addWidget(QtGui.QLabel("Use Slack"))
         self.isSlackCheckBox = QtGui.QCheckBox()
-        self.isSlackCheckBox.setChecked(False)
         paramsLayout.addWidget(self.isSlackCheckBox)
+        paramsLayout.addWidget(QtGui.QLabel("Erosion Iterations"))
+        self.slackErosionItersEdit = QtGui.QLineEdit()
+        paramsLayout.addWidget(self.slackErosionItersEdit)
+        self.isSlackCheckBox.stateChanged.connect(self.isSlackCheckBoxChanged)
+        self.isSlackCheckBox.setChecked(False)
+        self.isSlackCheckBoxChanged(False)
         opButtonsLayout = QtGui.QHBoxLayout()
         layout.addLayout(opButtonsLayout)
         self.beginButton = QtGui.QPushButton("Begin")
         self.beginButton.clicked.connect(self.beginButtonClicked)
         opButtonsLayout.addWidget(self.beginButton)
-        self.undoButton = QtGui.QPushButton("Undo")
+        self.undoButton = QtGui.QPushButton("Reset Subseeds")
         self.undoButton.enabled = False
         self.undoButton.clicked.connect(self.undoButtonClicked)
         opButtonsLayout.addWidget(self.undoButton)
@@ -102,19 +119,20 @@ Operation:
         layout.addWidget(subObjTableGroupBox)
         subObjTableLayout = QtGui.QGridLayout()
         subObjTableGroupBox.setLayout(subObjTableLayout)
-        self.subObjTable = QtGui.QTableWidget()
+        self.pendSubObjTable = self.MyTableWidget(self.pendSubObjTableDel)
         subObjTableLayout.addWidget(QtGui.QLabel("Pending"),0,0)
-        subObjTableLayout.addWidget(self.subObjTable,1,0)
-        self.setTableHeaders(self.subObjTable, self.OBJECT_LIST_COLUMNS)
-        self.subObjTable.cellClicked.connect(self.subObjTableCellClicked)
-        self.subObjTable.itemSelectionChanged.connect(self.subObjTableSelectionChanged)
-        self.subObjTable.cellDoubleClicked.connect(self.subObjTableCellDoubleClicked)
-        self.finalizeTable(self.subObjTable)
-        self.doneSubObjTable = QtGui.QTableWidget()
+        subObjTableLayout.addWidget(self.pendSubObjTable,1,0)
+        self.setTableHeaders(self.pendSubObjTable, self.OBJECT_LIST_COLUMNS)
+        self.pendSubObjTable.cellClicked.connect(self.pendSubObjTableCellClicked)
+        self.pendSubObjTable.itemSelectionChanged.connect(self.pendSubObjTableSelectionChanged)
+        self.pendSubObjTable.cellDoubleClicked.connect(self.pendSubObjTableCellDoubleClicked)
+        self.finalizeTable(self.pendSubObjTable)
+        self.doneSubObjTable = self.MyTableWidget(self.doneSubObjTableDel)
         subObjTableLayout.addWidget(QtGui.QLabel("Done"),0,1)
         subObjTableLayout.addWidget(self.doneSubObjTable,1,1)
         self.setTableHeaders(self.doneSubObjTable, self.OBJECT_LIST_COLUMNS)
         self.doneSubObjTable.cellClicked.connect(self.doneSubObjTableCellClicked)
+        self.doneSubObjTable.itemSelectionChanged.connect(self.doneSubObjTableSelectionChanged)
         self.doneSubObjTable.cellDoubleClicked.connect(self.doneSubObjTableCellDoubleClicked)
         self.finalizeTable(self.doneSubObjTable)
         # Show
@@ -133,7 +151,7 @@ Operation:
         membraneDataset = DatasetUtils.knossosDataset()
         membraneDataset.initialize_from_knossos_path(path)
         memPred = membraneDataset.from_cubes_to_matrix(size, offset, type='raw')
-        return numpy.invert(((memPred > self.memThres) * 255).astype(numpy.uint8))
+        return numpy.invert(memPred > self.memThres)
 
     def finalizeTable(self, table):
         table.horizontalHeader().setStretchLastSection(True)
@@ -193,7 +211,8 @@ Operation:
                         (self.markerRadiusEdit,"MARKER_RADIUS","10"), \
                         (self.memThresEdit,"MEM_THRES","150"), \
                         (self.minObjSizeEdit,"MIN_OBJ_SIZE","500"),
-                       (self.isSlackCheckBox,"IS_SLACK",False)]
+                       (self.isSlackCheckBox,"IS_SLACK",False),
+                       (self.slackErosionItersEdit,"SLACK_EROSION_ITERS","5")]
         self.loadConfig()
         self.signalConns = []
         self.signalConns.append((signalRelay.Signal_EventModel_handleMouseReleaseMiddle, self.handleMouseReleaseMiddle))
@@ -239,8 +258,8 @@ Operation:
             table.setHorizontalHeaderItem(i, twi)
         return
 
-    def clearTable(self, tableIsDone):
-        table = self.tableHash[tableIsDone]["Table"]
+    def clearTable(self, isDone):
+        table = self.tableHash[isDone]["Table"]
         table.clearContents()
         table.setRowCount(0)
         return
@@ -287,9 +306,6 @@ Operation:
         assert(os.path.isdir(s))
         return s
 
-    def subObjIdToNodeId(self,Id):
-        return Id
-
     def nextId(self):
         return max(self.mapIdToCoord.keys() + [self.baseSubObjId - 1]) + 1
 
@@ -299,21 +315,21 @@ Operation:
             return self.invalidId
         return min(l)
 
-    def IdFromRow(self, tableIsDone, row):
-        table = self.tableHash[tableIsDone]["Table"]
+    def IdFromRow(self, isDone, row):
+        table = self.tableHash[isDone]["Table"]
         if (row > table.rowCount) or (row < 0):
             return self.invalidId
         return long(table.item(row,0).text())
 
-    def RowFromId(self, tableIsDone, Id):
-        table = self.tableHash[tableIsDone]["Table"]
+    def RowFromId(self, isDone, Id):
+        table = self.tableHash[isDone]["Table"]
         for row in xrange(table.rowCount):
-            if self.IdFromRow(tableIsDone, row) == Id:
+            if self.IdFromRow(isDone, row) == Id:
                 return row
         return self.invalidRow
 
-    def pushTableStackId(self, tableIsDone, Id, atFirst = False):
-        stack = self.tableHash[tableIsDone]["Stack"]
+    def pushTableStackId(self, isDone, Id, atFirst = False):
+        stack = self.tableHash[isDone]["Stack"]
         if len(stack) == 0:
             stack.append(Id)
             return self.invalidId
@@ -327,36 +343,67 @@ Operation:
                 stack.append(Id)
         return prevLastId
 
-    def popTableStackId(self, tableIsDone, Id):
-        stack = self.tableHash[tableIsDone]["Stack"]
+    def popTableStackId(self, isDone, Id):
+        stack = self.tableHash[isDone]["Stack"]
         if Id in stack:
             stack.remove(Id)
         if len(stack) == 0:
             return self.invalidId
         return stack[-1]
 
+    def IsInvalidId(self,Id):
+        return (Id == self.invalidId)
+
+    def IsSlackId(self,Id):
+        return (Id == self.slackObjId)
+
+    def IsNormalId(self,Id):
+        return not (self.IsSlackId(Id) or self.IsInvalidId(Id))
+
+    def setActiveNode(self):
+        Id = self.curObjId
+        if self.IsNormalId(Id):
+            skeleton.set_active_node(self.mapIdToNodeId[Id])
+        return
+
     def selectObjId(self, Id):
-        self.undoButton.enabled = False
         self.curObjId = Id
         self.applyMask()
-        if (Id == self.invalidId) or (Id == self.slackObjId):
-            return
-        skeleton.set_active_node(self.subObjIdToNodeId(Id))
+        self.setActiveNode()
         self.jumpToId(Id)
         return
 
-    def subObjTableSelectionChanged(self):
+    def isSlackCheckBoxChanged(self,state):
+        self.slackErosionItersEdit.enabled = (state == Qt.Qt.Checked)
+        return
+
+    def getTableSelectedRow(self,table):
+        rows = table.selectionModel().selectedRows()
+        if len(rows) == 0:
+            return self.invalidRow
+        row = rows[0].row()
+        return row
+    
+    def tableSelectionChangedCommon(self,isDone):
         if not self.active:
             return
         if self.onChange:
             return
-        rows = self.subObjTable.selectionModel().selectedRows()
-        if len(rows) == 0:
+        table = self.tableHash[isDone]["Table"]
+        row = self.getTableSelectedRow(table)
+        if row == self.invalidRow:
             return
-        row = rows[0].row()
+        self.tableClickByRow(isDone,row)
+        return
+
+    def pendSubObjTableSelectionChanged(self):
         isDone = False
-        if self.curObjId <> self.IdFromRow(isDone,row):
-            self.subObjTableCellClicked(row,0)
+        self.tableSelectionChangedCommon(isDone)
+        return
+
+    def doneSubObjTableSelectionChanged(self):
+        isDone = True
+        self.tableSelectionChangedCommon(isDone)
         return
 
     def selectRowWrap(self,table,row):
@@ -365,7 +412,7 @@ Operation:
         self.onChange = False
         return
 
-    def subObjTableCellClicked(self, row, col):
+    def pendSubObjTableCellClicked(self, row, col):
         isDone = False
         table = self.tableHash[isDone]["Table"]
         Id = self.IdFromRow(isDone, row)
@@ -378,116 +425,244 @@ Operation:
         self.selectObjId(Id)
         return
 
-    def tableCellDoubleClickedCommon(self, tableSrcIsDone, row):
-        self.undoButton.enabled = False
-        tableDestIsDone = not tableSrcIsDone
-        tableSrc = self.tableHash[tableSrcIsDone]["Table"]
-        tableDest = self.tableHash[tableDestIsDone]["Table"]
-        Id = self.IdFromRow(tableSrcIsDone, row)
-        self.mapIdToDone[Id] = not self.mapIdToDone[Id]
-        return Id
+    def tableClickByRow(self,isDone,row):
+        clickF = self.tableHash[isDone]["Click"]
+        clickF(row,0)
+        return
+    
+    def tableDoubleClickByRow(self,isDone,row):
+        doubleClickF = self.tableHash[isDone]["DoubleClick"]
+        doubleClickF(row,0)
+        return
+    
+    def tableClickById(self,Id):
+        isDone = self.mapIdToDone[Id]
+        row = self.RowFromId(isDone,Id)
+        self.tableClickByRow(isDone,row)
+        return
 
-    def subObjTableCellDoubleClicked(self, row, col):
-        isDone = False
-        Id = self.tableCellDoubleClickedCommon(isDone, row)
-        newSrcTopId = self.popTableStackId(isDone,Id)
-        self.selectObjId(newSrcTopId)
+    def tableDoubleClickById(self,Id):
+        isDone = self.mapIdToDone[Id]
+        row = self.RowFromId(isDone,Id)
+        self.tableDoubleClickByRow(isDone,row)
+        return
+
+    def stackTop(self,isDone):
+        stack = self.tableHash[isDone]["Stack"]
+        if len(stack) == 0:
+            return self.invalidId
+        return stack[-1]
+
+    def clickTop(self,isDone):
+        stackTopId = self.stackTop(isDone)
+        if stackTopId == self.invalidId:
+            return False
+        self.tableClickById(stackTopId)
+        return True
+
+    def clickTopOrOtherTop(self,isDone):
+        if not self.clickTop(isDone):
+            self.clickTop(not isDone)
+        return
+
+    def tableCellDoubleClickedCommon(self, srcIsDone, row):
+        destIsDone = not srcIsDone
+        Id = self.IdFromRow(srcIsDone, row)
+        self.mapIdToDone[Id] = not self.mapIdToDone[Id]
+        self.popTableStackId(srcIsDone,Id)
+        self.pushTableStackId(destIsDone,Id)
         self.refreshTables()
+        return
+
+    def pendSubObjTableCellDoubleClicked(self, row, col):
+        isDone = False
+        self.tableCellDoubleClickedCommon(isDone, row)
+        self.clickTopOrOtherTop(isDone)
         return
 
     def doneSubObjTableCellClicked(self, row, col):
         isDone = True
         self.jumpToId(self.IdFromRow(isDone,row))
-        self.doneSubObjTable.clearSelection()
-        self.doneSubObjTable.clearFocus()
         return
 
     def doneSubObjTableCellDoubleClicked(self, row, col):
         isDone = True
-        Id = self.tableCellDoubleClickedCommon(isDone, row)
-        prevLastId = self.pushTableStackId(not isDone,Id,atFirst=True)
-        self.refreshTables()
-        if prevLastId == self.invalidId:
-            self.subObjTableCellClicked(self.RowFromId(not isDone, Id),0)
-        else:
-            self.jumpToId(self.curObjId)
+        self.tableCellDoubleClickedCommon(isDone, row)
+        self.noApplyMask = True
+        self.clickTop(isDone)
+        self.noApplyMask = False
+        self.clickTop(not isDone)
         return
     
     def applyMask(self):
-        self.WS_mask_prev[:,:,:] = self.WS_mask[:,:,:]
+        if self.noApplyMask:
+            return
         self.WS_mask = (self.WS == self.curObjId)
         self.WS_masked.fill(0)
         self.WS_masked[self.WS_mask] = self.WS[self.WS_mask]
         self.writeWS(self.WS_masked)
         return
 
-    def addSeed(self, coord, vpId):
-        coord_offset = self.coordOffset(coord)
+    def TreeIdById(self,Id):
+        if Id in self.mapIdToTreeId:
+            return self.mapIdToTreeId[Id]
+        treeId = skeleton.findAvailableTreeID()
+        skeleton.add_tree(treeId)
+        self.mapIdToTreeId[Id] = treeId
+        return treeId
+
+    def IsMoreCoords(self):
+        return (len(self.moreCoords) > 0)
+
+    def addMoreCoords(self, coord, coord_offset, vpId):
+        if self.WS_mask[coord_offset] == False:
+            self.jumpToId(self.WS[coord_offset])
+            return
+        if not self.IsMoreCoords():
+            self.undoButton.enabled = True
+        self.moreCoords.append((coord,coord_offset,vpId))
+        self.addNode(coord, self.TreeIdById(self.nextId()), vpId)
+        return
+
+    def seedMatrixDelId(self,Id):
+        for coord_offset in self.mapIdToSeedOffsets[Id]:
+            self.seedMatrix[coord_offset] = 0
+        del self.mapIdToSeedOffsets[Id]
+        return
+
+    def seedMatrixSetId(self,coords,Id):
+        coord_offsets = []
+        for curCoord in coords:
+            coord_offset = curCoord[1]
+            self.seedMatrix[coord_offset] = Id
+            coord_offsets.append(coord_offset)
+        self.mapIdToSeedOffsets[Id] = coord_offsets
+        return
+
+    def addNode(self,coord,treeId,vpId):
+        nodeId = skeleton.findAvailableNodeID()
+        skeleton.add_node(*((nodeId,)+coord+(treeId,self.markerRadius,vpId,)))
+        self.setActiveNode()
+        return nodeId
+
+    def addSeedGetParentIds(self,coords):
+        parentIds = {}
+        for curCoord in coords:
+            Id = self.WS[curCoord[1]]
+            if (Id <> self.invalidId) and (Id <> self.slackObjId):
+                parentIds[Id] = True
+        return parentIds.keys()
+
+    def displayCoord(self,coord):
+        return tuple(numpy.array(coord)+1)
+
+    def addSeed(self, coord, coord_offset, vpId):
         Id = self.nextId()
         if self.WS_mask[coord_offset] == False:
             self.jumpToId(self.WS[coord_offset])
             return
         if (self.lastObjId <> self.invalidId) and (self.curObjId == self.invalidId):
             QtGui.QMessageBox.information(0, "Error", "Select seed first!")
-        self.seedMatrix[coord_offset] = Id
-        parentId = self.WS[coord_offset]
+        coords = self.moreCoords + [(coord, coord_offset, vpId)]
+        self.seedMatrixSetId(coords,Id)
+        parentIds = self.addSeedGetParentIds(coords)
         WS_temp = self.calcWS()
         newObjSize = self.countVal(WS_temp,Id)
         if newObjSize < self.minObjSize:
-            QtGui.QMessageBox.information(0, "Error", "New object size (%d) smaller than minimum!" % newObjSize)
-            self.seedMatrix[coord_offset] = 0
+            QtGui.QMessageBox.information(0, "Error", "New object size (%d) too small!" % newObjSize)
+            self.seedMatrixDelId(Id)
             return
-        if parentId <> self.invalidId:
+        for parentId in parentIds:
             parentObjSize = self.countVal(WS_temp,parentId)
             if parentObjSize < self.minObjSize:
-                QtGui.QMessageBox.information(0, "Error", "Parent object size (%d) smaller than minimum!" % parentObjSize)
-                self.seedMatrix[coord_offset] = 0
+                QtGui.QMessageBox.information(0, "Error", "Parent object (%d) new size (%d) too small!" % (parentId, parentObjSize))
+                self.seedMatrixDelId(Id)
                 return
         isDone = False
         self.WS[self.WS_mask] = WS_temp[self.WS_mask]
         self.mapCoordToId[coord] = Id
         self.mapIdToCoord[Id] = coord
         self.mapIdToDone[Id] = isDone
-        skeleton.add_node(*((Id,)+coord+(self.MAGIC_TREE_NUM,self.markerRadius,vpId,)))
+        self.mapIdToNodeId[Id] = self.addNode(coord,self.TreeIdById(Id),vpId)
+        self.mapIdToMoreCoords[Id] = [curCoord[0] for curCoord in self.moreCoords]
+        self.moreCoords = []
+        self.undoButton.enabled = False
+        self.pushTableStackId(isDone,Id,atFirst=True)
         self.refreshTable(isDone)
+        self.noApplyMask = True
         if self.lastObjId == self.invalidId:
-            self.subObjTableCellClicked(0,0)
-        else:
-            self.undoButton.enabled = True
-            self.pushTableStackId(isDone,Id,atFirst=True)
+            self.clickTop(isDone)
         self.lastObjId = Id
+        self.noApplyMask = False
         self.applyMask()
         return
 
-    def refreshTable(self, tableIsDone):
-        table = self.tableHash[tableIsDone]["Table"]
-        self.clearTable(tableIsDone)
+    def refreshTable(self, isDone):
+        table = self.tableHash[isDone]["Table"]
+        self.clearTable(isDone)
         for (Id,coord) in self.getSortedMapItems():
-            if self.mapIdToDone[Id] == tableIsDone:
-                self.addTableRow(table, [str(Id), str(coord)], atEnd = True)
-        stack = self.tableHash[tableIsDone]["Stack"]
-        if (len(stack) > 0) and (tableIsDone == False):
-            self.selectRowWrap(table,self.RowFromId(tableIsDone, stack[-1]))
+            if self.mapIdToDone[Id] == isDone:
+                self.addTableRow(table, [str(Id), str(self.displayCoord(coord)), str(map(self.displayCoord,self.mapIdToMoreCoords[Id]))], atEnd = True)
+        stackTopId = self.stackTop(isDone)
+        if stackTopId <> self.invalidId:
+            self.selectRowWrap(table,self.RowFromId(isDone, stackTopId))
         return
     
-    def undoSeed(self,Id):
+    def removeSeed(self,Id):
         if Id == self.slackObjId:
             QtGui.QMessageBox.information(0, "Error", "Don't remove slack!")
             return
+        self.seedMatrixDelId(Id)
         coord = self.mapIdToCoord[Id]
-        self.seedMatrix[self.coordOffset(coord)] = 0
-        self.WS_mask[:,:,:] = self.WS_mask_prev[:,:,:]
-        WS_temp = self.calcWS()
-        self.WS[self.WS_mask] = WS_temp[self.WS_mask]
-        self.applyMask()
         del self.mapCoordToId[coord]
         del self.mapIdToCoord[Id]
-        self.popTableStackId(self.mapIdToDone[Id], Id)
+        isDone = self.mapIdToDone[Id]
+        self.popTableStackId(isDone, Id)
         del self.mapIdToDone[Id]
-        self.refreshTable(False)
-        skeleton.delete_node(Id)
+        skeleton.delete_tree(self.mapIdToTreeId[Id])
+        del self.mapIdToTreeId[Id]
+        del self.mapIdToNodeId[Id]
+        self.refreshTable(isDone)
+        self.WS_mask = self.newValMatrix(True,dtype="bool")
+        self.WS = self.calcWS()
+        self.noApplyMask = True
+        self.noJump = True
+        parentId = self.WS[self.coordOffset(coord)]
+        if self.IsInvalidId(parentId):
+            Id = self.invalidId
+            self.lastObjId = Id
+            self.selectObjId(Id)
+        else:
+            if self.mapIdToDone[parentId]:
+                self.tableDoubleClickById(parentId)
+                return
+            self.pushTableStackId(isDone,parentId)
+        self.refreshTable(isDone)
+        self.clickTopOrOtherTop(isDone)
+        self.noJump = False
+        self.jumpToCoord(coord)
+        self.noApplyMask = False
+        self.applyMask()
         return
 
+    def tableDel(self,isDone):
+        table = self.tableHash[isDone]["Table"]
+        row = self.getTableSelectedRow(table)
+        if row == self.invalidRow:
+            return
+        self.removeSeed(self.IdFromRow(isDone,row))
+        return
+
+    def pendSubObjTableDel(self):
+        isDone = False
+        self.tableDel(isDone)
+        return
+
+    def doneSubObjTableDel(self):
+        isDone = True
+        self.tableDel(isDone)
+        return
+    
     def refreshTables(self):
         map(self.refreshTable, [False,True])
         return
@@ -497,9 +672,16 @@ Operation:
         IdCoordTuples.sort()
         return IdCoordTuples
 
-    def jumpToId(self, Id):
-        coord = self.mapIdToCoord[Id]
+    def jumpToCoord(self, coord):
+        if self.noJump:
+            return
         knossos.setPosition(coord)
+        return
+
+    def jumpToId(self, Id):
+        if self.IsNormalId(Id):
+            coord = self.mapIdToCoord[Id]
+            self.jumpToCoord(coord)
         return
 
     def coordOffset(self,coord):
@@ -518,11 +700,20 @@ Operation:
         if not self.active:
             return
         coord = tuple(clickedCoord.vector())
-        self.addSeed(coord,vpId)
+        coord_offset = self.coordOffset(coord)
+        mods = event.modifiers()
+        if mods == 0:
+            self.addSeed(coord,coord_offset,vpId)
+        elif mods == Qt.Qt.ShiftModifier:
+            self.addMoreCoords(coord,coord_offset,vpId)
         return
 
     def undoButtonClicked(self):
-        self.undoSeed(self.lastObjId)
+        if not self.IsMoreCoords():
+            return
+        skeleton.delete_tree(self.mapIdToTreeId.pop(self.nextId()))
+        self.setActiveNode()
+        self.moreCoords = []
         self.undoButton.enabled = False
         return
 
@@ -552,16 +743,21 @@ Operation:
         self.accessMatrix(matrix, True)
         return
 
-    def writeWS(self, matrix):
-        self.writeMatrix(matrix[self.margin:-self.margin,self.margin:-self.margin,self.margin:-self.margin])
+    def matrixNoMargin(self,matrix):
+        return matrix[self.margin:-self.margin,self.margin:-self.margin,self.margin:-self.margin]
 
-    def newMatrix(self,dims=None):
+    def writeWS(self, matrix):
+        self.writeMatrix(self.matrixNoMargin(matrix))
+
+    def newMatrix(self,dims=None,dtype=None):
         if dims == None:
             dims = self.dims_arr
-        return numpy.ndarray(shape=dims, dtype="uint64")
+        if dtype == None:
+            dtype = "uint64"
+        return numpy.ndarray(shape=dims, dtype=dtype)
 
-    def newValMatrix(self, val):
-        matrix = self.newMatrix()
+    def newValMatrix(self, val, dtype=None):
+        matrix = self.newMatrix(dtype=dtype)
         matrix.fill(val)
         return matrix
 
@@ -570,10 +766,11 @@ Operation:
         return
 
     def commonEnd(self):
-        skeleton.delete_tree(self.MAGIC_TREE_NUM)
         knossos.resetMovementArea()
         self.active = False
         map(self.clearTable,[False,True])
+        for treeId in self.mapIdToTreeId.values():
+            skeleton.delete_tree(treeId)
         self.guiEnd()
         self.endMatrices()
         return
@@ -584,6 +781,7 @@ Operation:
         self.resetButton.enabled = True
         self.finishButton.enabled = True
         self.onChange = False
+        self.undoPrevEnabled = False
         return
 
     def guiEnd(self):
@@ -595,27 +793,28 @@ Operation:
         return
 
     def beginMatrices(self):
+        self.noApplyMask = False
         self.orig = self.newMatrix(dims=self.knossos_dims_arr)
         self.readMatrix(self.orig)
         self.WS = self.newValMatrix(self.invalidId)
-        self.WS_mask = (self.WS == self.invalidId)
-        self.WS_mask_prev = (self.WS == self.invalidId)
+        self.WS_mask = self.newValMatrix(True,dtype="bool")
         self.WS_masked = self.newValMatrix(self.invalidId)
         self.memPred = self.loadMembranePrediction(self.validateDir(str(self.dirEdit.text)), self.beginCoord_arr, self.dims_arr)
         self.distMemPred = -ndimage.distance_transform_edt(self.memPred)
         if self.isSlack:
             self.distMemPred += -ndimage.distance_transform_edt(numpy.invert(self.memPred))
             # use this matrix and add the manual seeds on top of it
-            self.seedMatrix = ndimage.morphology.binary_erosion(numpy.invert(self.memPred), iterations=5) * self.slackObjId
+            self.seedMatrix = ndimage.morphology.binary_erosion(numpy.invert(self.memPred), iterations=self.slackErosionIters) * self.slackObjId
         else:
             self.seedMatrix = self.newValMatrix(0)
-        self.writeWS(self.WS)
+            self.applyMask()
+        #cutoff = -100.0
+        #self.distMemPred[self.distMemPred < cutoff] = cutoff
         return
 
     def endMatrices(self):
         del self.orig
         del self.WS_mask
-        del self.WS_mask_prev
         del self.WS
         del self.seedMatrix
         del self.memPred
@@ -628,12 +827,17 @@ Operation:
         return
 
     def beginSeeds(self):
+        self.noJump = False
         self.curObjId = self.invalidId
         self.lastObjId = self.invalidId
         self.mapCoordToId = {}
         self.mapIdToCoord = {}
+        self.mapIdToTreeId = {}
+        self.moreCoords = []
+        self.mapIdToMoreCoords = {}
+        self.mapIdToNodeId = {}
+        self.mapIdToSeedOffsets = {}
         self.mapIdToDone = {}
-        skeleton.add_tree(self.MAGIC_TREE_NUM)
         return
     
     def beginSlack(self):
@@ -644,9 +848,10 @@ Operation:
         self.mapCoordToId[coord] = Id
         self.mapIdToCoord[Id] = coord
         self.mapIdToDone[Id] = isDone
+        self.mapIdToMoreCoords[Id] = []
         self.refreshTable(isDone)
         self.lastObjId = self.slackObjId
-        self.subObjTableCellClicked(0,0)
+        self.pendSubObjTableCellClicked(0,0)
         self.applyMask()
         return
     
@@ -666,15 +871,17 @@ Operation:
             self.minObjSize = int(self.minObjSizeEdit.text)
             self.memThres = int(self.memThresEdit.text)
             self.isSlack = self.isSlackCheckBox.isChecked()
-            self.knossos_beginCoord_arr = numpy.array(self.str2tripint(str(self.workAreaBeginEdit.text)))
+            self.slackErosionIters = int(self.slackErosionItersEdit.text)
+            self.knossos_beginCoord_arr = numpy.array(self.str2tripint(str(self.workAreaBeginEdit.text)))-numpy.array([1]*3)
             self.beginCoord_arr = self.knossos_beginCoord_arr - self.margin
             self.knossos_endCoord_arr = self.knossos_beginCoord_arr + self.knossos_dims_arr - 1
+            self.beginSeeds()
             self.beginMatrices()
             knossos.setPosition(tuple((self.knossos_beginCoord_arr + self.knossos_endCoord_arr) / 2))
             knossos.setMovementArea(list(self.knossos_beginCoord_arr), list(self.knossos_endCoord_arr))
-            self.tableHash = {True:{"Stack":[],"Table":self.doneSubObjTable},False:{"Stack":[],"Table":self.subObjTable}}
+            self.tableHash = {True:{"Stack":[],"Table":self.doneSubObjTable,"Click":self.doneSubObjTableCellClicked,"DoubleClick":self.doneSubObjTableCellDoubleClicked},\
+                              False:{"Stack":[],"Table":self.pendSubObjTable,"Click":self.pendSubObjTableCellClicked,"DoubleClick":self.pendSubObjTableCellDoubleClicked}}
             self.guiBegin()
-            self.beginSeeds()
             if self.isSlack:
                 self.beginSlack()
             self.active = True
@@ -695,6 +902,27 @@ Operation:
         self.clickSubObjs()
         self.commonEnd()
         return
+
+    def exportMatrix(self,matrix,p,noMargin):
+        try:
+            os.makedirs(p)
+        except:
+            pass
+        if noMargin:
+            matrix = self.matrixNoMargin(matrix)
+        for z in xrange(0, matrix.shape[2]):
+            img = Image.fromarray(matrix[:,:,z].transpose())
+            img.save(os.path.join(p,str(z)+'.tif'))
+        return
+
+    def exportDist(self,p,noMargin=False):
+        return self.exportMatrix(self.distMemPred,p,noMargin)
+
+    def exportSeeds(self,p,noMargin=False):
+        return self.exportMatrix(self.seedMatrix,p,noMargin)
+
+    def exportWS(self,p,noMargin=False):
+        return self.exportMatrix(self.WS,p,noMargin)
 
     pass
 
