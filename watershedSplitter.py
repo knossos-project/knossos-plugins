@@ -1,5 +1,5 @@
 from PythonQt import QtGui, Qt
-import DatasetUtils, numpy, os, re, string, sys, traceback, Image
+import DatasetUtils, numpy, os, re, string, sys, traceback, Image, time
 from scipy import ndimage
 from skimage.morphology import watershed
 DatasetUtils._set_noprint(True)
@@ -31,29 +31,32 @@ Operation:
     OBJECT_LIST_COLUMNS = [SUBOBJECT_ID_COLUMN_STR, SUBOBJECT_COORD_COLUMN_STR, SUBOBJECT_MORE_COORDS_COLUMN_STR]
 
     class MyTableWidget(QtGui.QTableWidget):
-        def __init__(self, f, parent=None):
+        def __init__(self, delF, sF, parent=None):
             QtGui.QTableWidget.__init__(self,parent)
-            self._f = f
+            self._delF = delF
+            self._sF = sF
             return
 
         def keyPressEvent(self, event):
             if event.key() == Qt.Qt.Key_Delete:
-                self._f()
+                self._delF()
+            if event.key() == Qt.Qt.Key_Space:
+                self._sF()
             return QtGui.QTableWidget.keyPressEvent(self,event)
         pass
 
     def initGUI(self):
         self.setWindowTitle("Watershed Splitter")
-        layout = QtGui.QVBoxLayout()
-        self.setLayout(layout)
+        self.widgetLayout = QtGui.QVBoxLayout()
+        self.setLayout(self.widgetLayout)
         instructionsButton = QtGui.QPushButton("See Instructions")
         instructionsButton.clicked.connect(self.instructionsButtonClicked)
-        layout.addWidget(instructionsButton)
+        self.widgetLayout.addWidget(instructionsButton)
         self.configGroupBox = QtGui.QGroupBox("Configuration")
-        layout.addWidget(self.configGroupBox)
+        self.widgetLayout.addWidget(self.configGroupBox)
         configLayout = QtGui.QVBoxLayout()
         self.configGroupBox.setLayout(configLayout)
-        layout.addLayout(configLayout)
+        self.widgetLayout.addLayout(configLayout)
         dirBrowseLayout = QtGui.QHBoxLayout()
         configLayout.addLayout(dirBrowseLayout)
         dirBrowseLayout.addWidget(QtGui.QLabel("Membrane Prediction"))
@@ -99,7 +102,7 @@ Operation:
         self.isSlackCheckBox.setChecked(False)
         self.isSlackCheckBoxChanged(False)
         opButtonsLayout = QtGui.QHBoxLayout()
-        layout.addLayout(opButtonsLayout)
+        self.widgetLayout.addLayout(opButtonsLayout)
         self.beginButton = QtGui.QPushButton("Begin")
         self.beginButton.clicked.connect(self.beginButtonClicked)
         opButtonsLayout.addWidget(self.beginButton)
@@ -115,29 +118,43 @@ Operation:
         self.finishButton.enabled = False
         self.finishButton.clicked.connect(self.finishButtonClicked)
         opButtonsLayout.addWidget(self.finishButton)
-        subObjTableGroupBox = QtGui.QGroupBox("SubObjects")
-        layout.addWidget(subObjTableGroupBox)
-        subObjTableLayout = QtGui.QGridLayout()
-        subObjTableGroupBox.setLayout(subObjTableLayout)
-        self.pendSubObjTable = self.MyTableWidget(self.pendSubObjTableDel)
-        subObjTableLayout.addWidget(QtGui.QLabel("Pending"),0,0)
-        subObjTableLayout.addWidget(self.pendSubObjTable,1,0)
+        self.subObjTableGroupBox = QtGui.QGroupBox("SubObjects")
+        subObjTableLayout = QtGui.QVBoxLayout()
+        self.subObjTableGroupBox.setLayout(subObjTableLayout)
+        tableSplit = QtGui.QSplitter()
+        tableSplit.setOrientation(Qt.Qt.Horizontal)
+        subObjTableLayout.addWidget(tableSplit)
+        self.pendSubObjTable = self.MyTableWidget(self.pendSubObjTableDel, self.pendSubObjTableS)
+        pendSubObjTableWidget = QtGui.QWidget()
+        tableSplit.addWidget(pendSubObjTableWidget)
+        pendSubObjTableLayout = QtGui.QVBoxLayout()
+        pendSubObjTableWidget.setLayout(pendSubObjTableLayout)
+        pendSubObjTableLayout.addWidget(QtGui.QLabel("Pending"))
+        pendSubObjTableLayout.addWidget(self.pendSubObjTable)
         self.setTableHeaders(self.pendSubObjTable, self.OBJECT_LIST_COLUMNS)
         self.pendSubObjTable.cellClicked.connect(self.pendSubObjTableCellClicked)
         self.pendSubObjTable.itemSelectionChanged.connect(self.pendSubObjTableSelectionChanged)
         self.pendSubObjTable.cellDoubleClicked.connect(self.pendSubObjTableCellDoubleClicked)
         self.finalizeTable(self.pendSubObjTable)
-        self.doneSubObjTable = self.MyTableWidget(self.doneSubObjTableDel)
-        subObjTableLayout.addWidget(QtGui.QLabel("Done"),0,1)
-        subObjTableLayout.addWidget(self.doneSubObjTable,1,1)
+        doneSubObjTableWidget = QtGui.QWidget()
+        tableSplit.addWidget(doneSubObjTableWidget)
+        doneSubObjTableLayout = QtGui.QVBoxLayout()
+        doneSubObjTableWidget.setLayout(doneSubObjTableLayout)
+        self.doneSubObjTable = self.MyTableWidget(self.doneSubObjTableDel, self.doneSubObjTableS)
+        doneSubObjTableLayout.addWidget(QtGui.QLabel("Done"))
+        doneSubObjTableLayout.addWidget(self.doneSubObjTable)
         self.setTableHeaders(self.doneSubObjTable, self.OBJECT_LIST_COLUMNS)
         self.doneSubObjTable.cellClicked.connect(self.doneSubObjTableCellClicked)
         self.doneSubObjTable.itemSelectionChanged.connect(self.doneSubObjTableSelectionChanged)
         self.doneSubObjTable.cellDoubleClicked.connect(self.doneSubObjTableCellDoubleClicked)
         self.finalizeTable(self.doneSubObjTable)
+        # Invisible edits
+        self.workWidgetWidthEdit = QtGui.QLineEdit()
+        self.workWidgetHeightEdit = QtGui.QLineEdit()
         # Show
         self.setWindowFlags(Qt.Qt.Window)
         self.show()
+        self.resize(0,0)
         return
 
     def __init__(self, parent=knossos_global_mainwindow):
@@ -211,8 +228,10 @@ Operation:
                         (self.markerRadiusEdit,"MARKER_RADIUS","10"), \
                         (self.memThresEdit,"MEM_THRES","150"), \
                         (self.minObjSizeEdit,"MIN_OBJ_SIZE","500"),
-                       (self.isSlackCheckBox,"IS_SLACK",False),
-                       (self.slackErosionItersEdit,"SLACK_EROSION_ITERS","5")]
+                       (self.isSlackCheckBox,"IS_SLACK",True),
+                       (self.slackErosionItersEdit,"SLACK_EROSION_ITERS","1"),
+                       (self.workWidgetWidthEdit,"WORK_WIDGET_WIDTH", "600"),
+                       (self.workWidgetHeightEdit,"WORK_WIDGET_HEIGHT", "400")]
         self.loadConfig()
         self.signalConns = []
         self.signalConns.append((signalRelay.Signal_EventModel_handleMouseReleaseMiddle, self.handleMouseReleaseMiddle))
@@ -525,18 +544,17 @@ Operation:
         return
 
     def seedMatrixDelId(self,Id):
-        for coord_offset in self.mapIdToSeedOffsets[Id]:
+        for coordTuple in self.mapIdToSeedTuples[Id]:
+            coord_offset = coordTuple[1]
             self.seedMatrix[coord_offset] = 0
-        del self.mapIdToSeedOffsets[Id]
+        del self.mapIdToSeedTuples[Id]
         return
 
-    def seedMatrixSetId(self,coords,Id):
-        coord_offsets = []
-        for curCoord in coords:
-            coord_offset = curCoord[1]
+    def seedMatrixSetId(self,coordTuples,Id):
+        for coordTuple in coordTuples:
+            coord_offset = coordTuple[1]
             self.seedMatrix[coord_offset] = Id
-            coord_offsets.append(coord_offset)
-        self.mapIdToSeedOffsets[Id] = coord_offsets
+        self.mapIdToSeedTuples[Id] = coordTuples
         return
 
     def addNode(self,coord,treeId,vpId):
@@ -556,17 +574,20 @@ Operation:
     def displayCoord(self,coord):
         return tuple(numpy.array(coord)+1)
 
-    def addSeed(self, coord, coord_offset, vpId):
-        Id = self.nextId()
+    def addSeed(self, coord, coord_offset, vpId, isSlack=False):
+        if isSlack:
+            Id = self.slackObjId
+        else:
+            Id = self.nextId()
         if self.WS_mask[coord_offset] == False:
             self.jumpToId(self.WS[coord_offset])
             return
         if (self.lastObjId <> self.invalidId) and (self.curObjId == self.invalidId):
             QtGui.QMessageBox.information(0, "Error", "Select seed first!")
-        coords = self.moreCoords + [(coord, coord_offset, vpId)]
-        self.seedMatrixSetId(coords,Id)
-        parentIds = self.addSeedGetParentIds(coords)
-        WS_temp = self.calcWS()
+        coordTuples = [(coord, coord_offset, vpId)] + self.moreCoords
+        self.seedMatrixSetId(coordTuples,Id)
+        parentIds = self.addSeedGetParentIds(coordTuples)
+        WS_temp = self.calcWS(isSlack)
         newObjSize = self.countVal(WS_temp,Id)
         if newObjSize < self.minObjSize:
             QtGui.QMessageBox.information(0, "Error", "New object size (%d) too small!" % newObjSize)
@@ -578,8 +599,11 @@ Operation:
                 QtGui.QMessageBox.information(0, "Error", "Parent object (%d) new size (%d) too small!" % (parentId, parentObjSize))
                 self.seedMatrixDelId(Id)
                 return
-        isDone = False
         self.WS[self.WS_mask] = WS_temp[self.WS_mask]
+        if isSlack:
+            self.applyMask()
+            return
+        isDone = False
         self.mapCoordToId[coord] = Id
         self.mapIdToCoord[Id] = coord
         self.mapIdToDone[Id] = isDone
@@ -612,8 +636,10 @@ Operation:
         if Id == self.slackObjId:
             QtGui.QMessageBox.information(0, "Error", "Don't remove slack!")
             return
+        coordTuples = self.mapIdToSeedTuples[Id]
         self.seedMatrixDelId(Id)
         coord = self.mapIdToCoord[Id]
+        retVal = (coord, coordTuples)
         del self.mapCoordToId[coord]
         del self.mapIdToCoord[Id]
         isDone = self.mapIdToDone[Id]
@@ -623,7 +649,7 @@ Operation:
         del self.mapIdToTreeId[Id]
         del self.mapIdToNodeId[Id]
         self.refreshTable(isDone)
-        self.WS_mask = self.newValMatrix(True,dtype="bool")
+        self.WS_mask = self.newTrueMatrix()
         self.WS = self.calcWS()
         self.noApplyMask = True
         self.noJump = True
@@ -635,7 +661,7 @@ Operation:
         else:
             if self.mapIdToDone[parentId]:
                 self.tableDoubleClickById(parentId)
-                return
+                return retVal
             self.pushTableStackId(isDone,parentId)
         self.refreshTable(isDone)
         self.clickTopOrOtherTop(isDone)
@@ -643,14 +669,23 @@ Operation:
         self.jumpToCoord(coord)
         self.noApplyMask = False
         self.applyMask()
-        return
+        return retVal
 
     def tableDel(self,isDone):
         table = self.tableHash[isDone]["Table"]
         row = self.getTableSelectedRow(table)
         if row == self.invalidRow:
+            return None
+        return self.removeSeed(self.IdFromRow(isDone,row))
+
+    def tableS(self,isDone):
+        if not self.isSlack:
             return
-        self.removeSeed(self.IdFromRow(isDone,row))
+        self.undoButtonClicked()
+        (coord, coordTuples) = self.tableDel(isDone)
+        (coord, coord_offset, vpId) = coordTuples.pop()
+        self.moreCoords = coordTuples
+        self.addSeed(coord,coord_offset,vpId,isSlack=True)
         return
 
     def pendSubObjTableDel(self):
@@ -663,6 +698,16 @@ Operation:
         self.tableDel(isDone)
         return
     
+    def pendSubObjTableS(self):
+        isDone = False
+        self.tableS(isDone)
+        return
+
+    def doneSubObjTableS(self):
+        isDone = True
+        self.tableS(isDone)
+        return
+
     def refreshTables(self):
         map(self.refreshTable, [False,True])
         return
@@ -687,8 +732,15 @@ Operation:
     def coordOffset(self,coord):
         return tuple(self.margin + numpy.array(coord) - self.knossos_beginCoord_arr)
 
-    def calcWS(self):
-        return watershed(self.distMemPred, self.seedMatrix, None, None, self.WS_mask)
+    def calcWS(self,isSlack=False):
+        seededDist = self.distMemPred-((self.seedMatrix > 0)*1.0)
+        if isSlack:
+            mask = self.newTrueMatrix()
+        else:
+            mask = self.WS_mask
+        ws = watershed(seededDist, self.seedMatrix, None, None, mask)
+        return ws
+        
 
     def countVal(self,matrix,val):
         return numpy.sum(matrix==val)
@@ -706,6 +758,8 @@ Operation:
             self.addSeed(coord,coord_offset,vpId)
         elif mods == Qt.Qt.ShiftModifier:
             self.addMoreCoords(coord,coord_offset,vpId)
+        elif mods == Qt.Qt.ControlModifier:
+            self.addSeed(coord,coord_offset,vpId,isSlack=self.isSlack)
         return
 
     def undoButtonClicked(self):
@@ -761,6 +815,9 @@ Operation:
         matrix.fill(val)
         return matrix
 
+    def newTrueMatrix(self):
+        return self.newValMatrix(True,dtype="bool")
+
     def readMatrix(self, matrix):
         self.accessMatrix(matrix, False)
         return
@@ -776,40 +833,63 @@ Operation:
         return
     
     def guiBegin(self):
-        self.configGroupBox.enabled = False
+        self.configGroupBox.hide()
+        self.widgetLayout.addWidget(self.subObjTableGroupBox)
+        self.subObjTableGroupBox.show()
         self.beginButton.enabled = False
         self.resetButton.enabled = True
         self.finishButton.enabled = True
         self.onChange = False
         self.undoPrevEnabled = False
+        Qt.QApplication.processEvents()
+        self.resize(int(self.workWidgetWidthEdit.text),int(self.workWidgetHeightEdit.text))
         return
 
     def guiEnd(self):
-        self.configGroupBox.enabled = True
+        self.configGroupBox.show()
+        self.widgetLayout.removeWidget(self.subObjTableGroupBox)
+        self.subObjTableGroupBox.hide()
         self.beginButton.enabled = True
         self.undoButton.enabled = False
         self.resetButton.enabled = False
         self.finishButton.enabled = False
+        self.workWidgetWidthEdit.text = str(self.size.width())
+        self.workWidgetHeightEdit.text = str(self.size.height())
+        Qt.QApplication.processEvents()
+        self.resize(0,0)
         return
+
+    def scaleMatrix(self,m,minVal,maxVal):
+        curMinVal = m.min()
+        curRange = m.max() - curMinVal
+        newRange = maxVal - minVal
+        return ((m - curMinVal)*(newRange/curRange))+minVal
 
     def beginMatrices(self):
         self.noApplyMask = False
         self.orig = self.newMatrix(dims=self.knossos_dims_arr)
         self.readMatrix(self.orig)
         self.WS = self.newValMatrix(self.invalidId)
-        self.WS_mask = self.newValMatrix(True,dtype="bool")
+        self.WS_mask = self.newTrueMatrix()
         self.WS_masked = self.newValMatrix(self.invalidId)
         self.memPred = self.loadMembranePrediction(self.validateDir(str(self.dirEdit.text)), self.beginCoord_arr, self.dims_arr)
+        pad = 1
+        self.memPred = numpy.pad(self.memPred,((pad,pad),)*3,'constant',constant_values=((0,0),)*3)
         self.distMemPred = -ndimage.distance_transform_edt(self.memPred)
         if self.isSlack:
             self.distMemPred += -ndimage.distance_transform_edt(numpy.invert(self.memPred))
             # use this matrix and add the manual seeds on top of it
-            self.seedMatrix = ndimage.morphology.binary_erosion(numpy.invert(self.memPred), iterations=self.slackErosionIters) * self.slackObjId
+            if self.slackErosionIters == 0:
+                erosion = numpy.invert(self.memPred)
+            else:
+                erosion = ndimage.morphology.binary_erosion(numpy.invert(self.memPred), iterations=self.slackErosionIters)
+            self.seedMatrix = erosion * self.slackObjId
+            self.seedMatrix = self.seedMatrix[pad:-pad,pad:-pad,pad:-pad]
         else:
             self.seedMatrix = self.newValMatrix(0)
-            self.applyMask()
-        #cutoff = -100.0
-        #self.distMemPred[self.distMemPred < cutoff] = cutoff
+        self.distMemPred = self.distMemPred[pad:-pad,pad:-pad,pad:-pad]
+        self.distMemPred = self.scaleMatrix(self.distMemPred,0,1)
+        self.applyMask()
         return
 
     def endMatrices(self):
@@ -836,7 +916,7 @@ Operation:
         self.moreCoords = []
         self.mapIdToMoreCoords = {}
         self.mapIdToNodeId = {}
-        self.mapIdToSeedOffsets = {}
+        self.mapIdToSeedTuples = {}
         self.mapIdToDone = {}
         return
     
