@@ -178,7 +178,7 @@ Operation:
         return
 
     def __init__(self, parent=knossos_global_mainwindow):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         super(watershedSplitter, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
         self.initGUI()
         self.initLogic()
@@ -461,13 +461,13 @@ Operation:
         return
 
     def pendSubObjTableSelectionChanged(self):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = False
         self.tableSelectionChangedCommon(isDone)
         return
 
     def doneSubObjTableSelectionChanged(self):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = True
         self.tableSelectionChangedCommon(isDone)
         return
@@ -479,7 +479,7 @@ Operation:
         return
 
     def pendSubObjTableCellClicked(self, row, col):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = False
         table = self.tableHash[isDone]["Table"]
         Id = self.IdFromRow(isDone, row)
@@ -542,20 +542,20 @@ Operation:
         return
 
     def pendSubObjTableCellDoubleClicked(self, row, col):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = False
         self.tableCellDoubleClickedCommon(isDone, row)
         self.clickTopOrOtherTop(isDone)
         return
 
     def doneSubObjTableCellClicked(self, row, col):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = True
         self.jumpToId(self.IdFromRow(isDone,row))
         return
 
     def doneSubObjTableCellDoubleClicked(self, row, col):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = True
         self.tableCellDoubleClickedCommon(isDone, row)
         self.noApplyMask = True
@@ -567,6 +567,7 @@ Operation:
     def applyMask(self):
         if self.noApplyMask:
             return
+        busyScope = self.BusyCursorScope()
         self.WS_mask = (self.WS == self.curObjId)
         self.WS_masked.fill(0)
         self.WS_masked[self.WS_mask] = self.WS[self.WS_mask]
@@ -585,9 +586,6 @@ Operation:
         return (len(self.moreCoords) > 0)
 
     def addMoreCoords(self, coord, coord_offset, vpId):
-        if self.WS_mask[coord_offset] == False:
-            self.jumpToId(self.WS[coord_offset])
-            return
         if not self.IsMoreCoords():
             self.undoButton.enabled = True
         self.moreCoords.append((coord,coord_offset,vpId))
@@ -627,9 +625,6 @@ Operation:
 
     def addSeed(self, coord, coord_offset, vpId, isSlack=False):
         Id = self.nextId()
-        if self.WS_mask[coord_offset] == False:
-            self.jumpToId(self.WS[coord_offset])
-            return
         if (self.lastObjId <> self.invalidId) and (self.curObjId == self.invalidId):
             QtGui.QMessageBox.information(0, "Error", "Select seed first!")
         coordTuples = [(coord, coord_offset, vpId)] + self.moreCoords
@@ -753,25 +748,25 @@ Operation:
         return
 
     def pendSubObjTableDel(self):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = False
         self.tableDel(isDone)
         return
 
     def doneSubObjTableDel(self):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = True
         self.tableDel(isDone)
         return
     
     def pendSubObjTableS(self):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = False
         self.tableS(isDone)
         return
 
     def doneSubObjTableS(self):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         isDone = True
         self.tableS(isDone)
         return
@@ -811,6 +806,7 @@ Operation:
         return tuple(self.margin + numpy.array(coord) - self.knossos_beginCoord_arr)
 
     def calcWS(self,isSlack=False):
+        busyScope = self.BusyCursorScope()
         seededDist = self.distMemPred-((self.seedMatrix > 0)*1.0)
         if isSlack:
             mask = self.newTrueMatrix()
@@ -826,11 +822,17 @@ Operation:
         return len(self.mapCoordToId) == 0
 
     def handleMouseReleaseMiddle(self, eocd, clickedCoord, vpId, event):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         if not self.active:
             return
         coord = tuple(clickedCoord.vector())
         coord_offset = self.coordOffset(coord)
+        if self.WS_mask[coord_offset] == False:
+            self.jumpToId(self.WS[coord_offset])
+            return
+        if self.seedMatrix[coord_offset] <> 0:
+            QtGui.QMessageBox.information(0, "Error", "Another seed already placed!")
+            return
         mods = event.modifiers()
         if mods == 0:
             t = time.time()
@@ -842,7 +844,7 @@ Operation:
         return
 
     def undoButtonClicked(self):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         if not self.IsMoreCoords():
             return
         skeleton.delete_tree(self.mapIdToTreeId.pop(self.nextId()))
@@ -1033,7 +1035,7 @@ Operation:
     def beginButtonClicked(self):
         retVal = True
         try:
-            busyScope = self.BusyCursorScope()
+            #busyScope = self.BusyCursorScope()
             self.slackObjId = 1L
             self.slackCoord = (-1,-1,-1)
             self.invalidId = 0L
@@ -1070,13 +1072,13 @@ Operation:
         return retVal
     
     def resetButtonClicked(self):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         self.writeMatrix(self.orig)
         self.commonEnd()
         return
 
     def finishButtonClicked(self):
-        busyScope = self.BusyCursorScope()
+        #busyScope = self.BusyCursorScope()
         self.finalizeSubObjs()
         self.writeWS(self.WS)
         self.commonEnd()
