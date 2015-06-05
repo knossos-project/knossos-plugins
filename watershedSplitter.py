@@ -178,7 +178,6 @@ Operation:
         return
 
     def __init__(self, parent=knossos_global_mainwindow):
-        #busyScope = self.BusyCursorScope()
         super(watershedSplitter, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
         self.initGUI()
         self.initLogic()
@@ -442,11 +441,7 @@ Operation:
         return
 
     def getTableSelectedRow(self,table):
-        rows = table.selectionModel().selectedRows()
-        if len(rows) == 0:
-            return self.invalidRow
-        row = rows[0].row()
-        return row
+        return [x.row() for x in table.selectionModel().selectedRows()]
     
     def tableSelectionChangedCommon(self,isDone):
         if not self.active:
@@ -454,20 +449,18 @@ Operation:
         if self.onChange:
             return
         table = self.tableHash[isDone]["Table"]
-        row = self.getTableSelectedRow(table)
-        if row == self.invalidRow:
+        rows = self.getTableSelectedRow(table)
+        if len(rows) <> 1:
             return
-        self.tableClickByRow(isDone,row)
+        self.tableClickByRow(isDone,rows[0])
         return
 
     def pendSubObjTableSelectionChanged(self):
-        #busyScope = self.BusyCursorScope()
         isDone = False
         self.tableSelectionChangedCommon(isDone)
         return
 
     def doneSubObjTableSelectionChanged(self):
-        #busyScope = self.BusyCursorScope()
         isDone = True
         self.tableSelectionChangedCommon(isDone)
         return
@@ -479,7 +472,6 @@ Operation:
         return
 
     def pendSubObjTableCellClicked(self, row, col):
-        #busyScope = self.BusyCursorScope()
         isDone = False
         table = self.tableHash[isDone]["Table"]
         Id = self.IdFromRow(isDone, row)
@@ -542,20 +534,17 @@ Operation:
         return
 
     def pendSubObjTableCellDoubleClicked(self, row, col):
-        #busyScope = self.BusyCursorScope()
         isDone = False
         self.tableCellDoubleClickedCommon(isDone, row)
         self.clickTopOrOtherTop(isDone)
         return
 
     def doneSubObjTableCellClicked(self, row, col):
-        #busyScope = self.BusyCursorScope()
         isDone = True
         self.jumpToId(self.IdFromRow(isDone,row))
         return
 
     def doneSubObjTableCellDoubleClicked(self, row, col):
-        #busyScope = self.BusyCursorScope()
         isDone = True
         self.tableCellDoubleClickedCommon(isDone, row)
         self.noApplyMask = True
@@ -675,98 +664,108 @@ Operation:
             self.selectRowWrap(table,self.RowFromId(isDone, stackTopId))
         return
     
-    def removeSeed(self,Id):
-        coordTuples = self.mapIdToSeedTuples[Id]
-        self.seedMatrixDelId(Id)
-        coord = self.mapIdToCoord[Id]
-        retVal = (coord, coordTuples)
-        del self.mapCoordToId[coord]
-        del self.mapIdToCoord[Id]
-        isDone = self.mapIdToDone[Id]
-        self.popTableStackId(isDone, Id)
-        del self.mapIdToDone[Id]
-        skeleton.delete_tree(self.mapIdToTreeId[Id])
-        del self.mapIdToTreeId[Id]
-        del self.mapIdToNodeId[Id]
-        del self.mapIdToSlack[Id]
-        del self.mapIdToTodo[Id]
-        self.refreshTable(isDone)
-        self.WS_mask = self.newTrueMatrix()
-        self.WS = self.calcWS()
+    def removeSeeds(self,Ids):
+        if len(Ids) == 0:
+            return
         self.noApplyMask = True
         self.noJump = True
-        parentId = self.WS[self.coordOffset(coord)]
-        if self.IsInvalidId(parentId):
-            Id = self.invalidId
-            self.lastObjId = Id
-            self.selectObjId(Id)
-        else:
-            if self.mapIdToDone[parentId]:
-                self.tableDoubleClickById(parentId)
-                return retVal
-            self.pushTableStackId(isDone,parentId)
-        self.refreshTable(isDone)
-        self.clickTopOrOtherTop(isDone)
+        for Id in Ids:
+            coordTuples = self.mapIdToSeedTuples[Id]
+            self.seedMatrixDelId(Id)
+            coord = self.mapIdToCoord[Id]
+            del self.mapCoordToId[coord]
+            del self.mapIdToCoord[Id]
+            isDone = self.mapIdToDone[Id]
+            self.popTableStackId(isDone, Id)
+            del self.mapIdToDone[Id]
+            skeleton.delete_tree(self.mapIdToTreeId[Id])
+            del self.mapIdToTreeId[Id]
+            del self.mapIdToNodeId[Id]
+            del self.mapIdToSlack[Id]
+            del self.mapIdToTodo[Id]
+            self.refreshTable(isDone)
+            self.WS_mask = self.newTrueMatrix()
+            self.WS = self.calcWS()
+            parentId = self.WS[self.coordOffset(coord)]
+            if self.IsInvalidId(parentId):
+                Id = self.invalidId
+                self.lastObjId = Id
+                self.selectObjId(Id)
+            else:
+                if self.mapIdToDone[parentId]:
+                    self.tableDoubleClickById(parentId)
+                    return
+                self.pushTableStackId(isDone,parentId)
+            self.refreshTable(isDone)
+            self.clickTopOrOtherTop(isDone)
         self.noJump = False
         self.jumpToCoord(coord)
         self.noApplyMask = False
         self.applyMask()
-        return retVal
+        return
 
     def tableDel(self,isDone):
         table = self.tableHash[isDone]["Table"]
-        row = self.getTableSelectedRow(table)
-        if row == self.invalidRow:
-            return None
-        Id = self.IdFromRow(isDone,row)
-        if self.IsSlackId(Id):
-            QtGui.QMessageBox.information(0, "Error", "Cannot remove auto slack!")
+        rows = self.getTableSelectedRow(table)
+        if len(rows) == 0:
             return
-        return self.removeSeed(Id)
+        Ids = []
+        slackError = False
+        for row in rows:
+            Id = self.IdFromRow(isDone,row)
+            if self.IsSlackId(Id):
+                slackError = True
+                continue
+            Ids.append(Id)
+        self.removeSeeds(Ids)
+        if slackError:
+            QtGui.QMessageBox.information(0, "Error", "Auto slack cannot be removed")
+        return
 
     def tableS(self,isDone):
         table = self.tableHash[isDone]["Table"]
-        row = self.getTableSelectedRow(table)
-        if row == self.invalidRow:
-            return None
-        Id = self.IdFromRow(isDone,row)
-        if self.IsSlackId(Id):
-            QtGui.QMessageBox.information(0, "Error", "Cannot toggle auto slack!")
+        rows = self.getTableSelectedRow(table)
+        if len(rows) == 0:
             return
-        self.mapIdToSlack[Id] = not self.mapIdToSlack[Id]
+        slackError = False
+        for row in rows:
+            Id = self.IdFromRow(isDone,row)
+            if self.IsSlackId(Id):
+                slackError = True
+                continue
+            self.mapIdToSlack[Id] = not self.mapIdToSlack[Id]
         self.refreshTable(isDone)
+        if slackError:
+            QtGui.QMessageBox.information(0, "Error", "Cannot toggle auto slack!")
         return
 
     def tableCtrlB(self,isDone):
         table = self.tableHash[isDone]["Table"]
-        row = self.getTableSelectedRow(table)
-        if row == self.invalidRow:
-            return None
-        Id = self.IdFromRow(isDone,row)
-        self.mapIdToTodo[Id] = not self.mapIdToTodo[Id]
+        rows = self.getTableSelectedRow(table)
+        if len(rows) == 0:
+            return
+        for row in rows:
+            Id = self.IdFromRow(isDone,row)
+            self.mapIdToTodo[Id] = not self.mapIdToTodo[Id]
         self.refreshTable(isDone)
         return
 
     def pendSubObjTableDel(self):
-        #busyScope = self.BusyCursorScope()
         isDone = False
         self.tableDel(isDone)
         return
 
     def doneSubObjTableDel(self):
-        #busyScope = self.BusyCursorScope()
         isDone = True
         self.tableDel(isDone)
         return
     
     def pendSubObjTableS(self):
-        #busyScope = self.BusyCursorScope()
         isDone = False
         self.tableS(isDone)
         return
 
     def doneSubObjTableS(self):
-        #busyScope = self.BusyCursorScope()
         isDone = True
         self.tableS(isDone)
         return
@@ -822,7 +821,6 @@ Operation:
         return len(self.mapCoordToId) == 0
 
     def handleMouseReleaseMiddle(self, eocd, clickedCoord, vpId, event):
-        #busyScope = self.BusyCursorScope()
         if not self.active:
             return
         coord = tuple(clickedCoord.vector())
@@ -844,7 +842,6 @@ Operation:
         return
 
     def undoButtonClicked(self):
-        #busyScope = self.BusyCursorScope()
         if not self.IsMoreCoords():
             return
         skeleton.delete_tree(self.mapIdToTreeId.pop(self.nextId()))
@@ -962,7 +959,6 @@ Operation:
         self.distMemPred = -ndimage.distance_transform_edt(self.memPred)
         if self.isSlack:
             self.distMemPred += -ndimage.distance_transform_edt(numpy.invert(self.memPred))
-            # use this matrix and add the manual seeds on top of it
             if self.slackErosionIters == 0:
                 erosion = numpy.invert(self.memPred)
             else:
@@ -1035,7 +1031,6 @@ Operation:
     def beginButtonClicked(self):
         retVal = True
         try:
-            #busyScope = self.BusyCursorScope()
             self.slackObjId = 1L
             self.slackCoord = (-1,-1,-1)
             self.invalidId = 0L
@@ -1072,13 +1067,11 @@ Operation:
         return retVal
     
     def resetButtonClicked(self):
-        #busyScope = self.BusyCursorScope()
         self.writeMatrix(self.orig)
         self.commonEnd()
         return
 
     def finishButtonClicked(self):
-        #busyScope = self.BusyCursorScope()
         self.finalizeSubObjs()
         self.writeWS(self.WS)
         self.commonEnd()
