@@ -2,3 +2,4 @@ http://knossos-project.github.io/knossos-plugins/pm.py
 http://knossos-project.github.io/knossos-plugins/dialog.py
 http://knossos-project.github.io/knossos-plugins/pathMeasure.py
 http://knossos-project.github.io/knossos-plugins/overlayFun.py
+http://knossos-project.github.io/knossos-plugins/watershedSplitter.py
