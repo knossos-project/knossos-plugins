@@ -10,20 +10,97 @@ from matplotlib import pyplot as plt
 #KNOSSOS_PLUGIN Description Iteratively split a volume into subobjects using a watershed algorithm on a pre-calculated prediction
 
 class watershedSplitter(QtGui.QWidget):
-    INSTRUCTION_TEXT_STR = """Fill configuration:
-- Pick membrane prediction dataset by browsing to directory of knossos.conf
-- Base subobject ID for subobjects to be created
-- Beginning and size of work area as an x,y,z blank-separated tuples
-- Margin size for actual algorithm (would not be eventually projected to knossos)
-- Algorithmic parameters
+    INSTRUCTION_TEXT_STR = """
+Concept:
 
-Operation:
-- Click begin to process configuration. This would confine movement to work area
-- Iteratively:
--- Middle-click a coordinate inside a subobject to calculate watershed
--- Select masked subobject by clicking a row in SubObjects table,
-   or click Undo to revert last coordinate placement
-- Click either Finish to save changes into file or Reset to discard"""
+Watershed Splitter is a knossos annotation plugin that facilitates the spliting a cubic volume into several distinct "objects", and their surrounding "slack". In the brain this means neurons (or glia cells) and extracelluar space (ECS), respectively. To achieve this, each cell is considered a "basin", and one or more "seeds" are placed at the "bottom level" of the basin. The seeds, together with a prediction of the topography of the barriers between cells, are fed to a "watershed" algorithm. There, all basins are "flooded with water", until waters of different basins meet at predicted barriers. Each flooded basin is labelled as a distinct cell. In order to bridge gaps in barrier prediction, a distance transform on the prediction is fed to the watershed instead of the original prediction.
+
+Instead of seeding all basins at once, this plugins employs an iterative workflow. At first, basin A is seeded and the watershed floods the entire volume. Then basin B is seeded and the watershed is calculated again, therefor only part of the volume is labelled A, while the rest was split off A and is now labelled B. Now, basin C is placed in an area still labelled as A. Thereby, the watershed again splits off some of the volume of A and labels it C. Eventually, the area labelled as A roughly matches the actual cell that was seeded at the coordinate of basin A.
+
+With the annotation of basin A done, iteration proceed to pending basin B. Again, additional basins are seeded iteratively, until only the cell containing the seed of basin B is labelled as B. Iterating on basins in this manner, the refinement of basin gradually derives smaller and smaller basins, until eventually the entire volume is labelled by the watershed as distinct cells (or ECS). The resulting labels are then written as subobject IDs into knossos overlay snappy cache, and can be further processed through the segmentation widget and tools (e.g. refining cell boundaries; splitting or merging falsely merged or splitted cells, respectively).
+
+Slack is handled by the plugin in a special manner. In the default Auto Slack mode, the workflow begins from a single "auto slack" basin, which is seeded at many coordinates, automatically computed from the barrier prediction. Cell basins are then split off auto slack. When Auto Slack mode is off, the workflow begins as described above, by seeding cell basins. In both modes, a basin can be classified as slack rather than as a cell. Note that basins splitting off a slack basin are classified as cells by default. At the end of the workflow, all slack basins (including the auto slack) are written to knossos overlay with a single unique "slack ID", thereby unifying them as a single segmentation object.
+
+Configuration:
+- Membrane Prediction - pick dataset by browsing to directory of knossos.conf.
+  Raw knossos data cubes are assumed, where values closer to 255 denote a
+  membrane, and values closed to 0 denote a cell
+- Coordinate, Size - beginning coordinate and (voxel) size of work area as x,y,z blank-separated tuples
+- Margin - (voxel) size of the margin extending the work area on each axis at both directions
+  Margins take  part in the watershed but are not output back to knossos overlay
+- Marker Radius - radius of marker for visualizing seed location
+- Base ID - IDs of created subobjects start growing from this number
+- Membrane Threshold - membrane prediction values above this denote a barrier, equal/below denote a cell
+- Min Obj Size - when a basin is split, the (voxel) size of both the split-off and the remainder of the
+  original basin are checked against this value
+- Auto Slack - whether to compute and seed slack automatically. Erosions - number of iterations for
+  eroding the thresholded membrane prediction before seeding the auto slack
+
+Operation
+- In this paragraph you will learn how to operate the plugin technically. Then read Workflow instructions below.
+- Open dataset option widget, make sure magnification level is locked on 1. Use skeletonization mode
+- Click the Begin button to process configuration and start working. This will confine movement to work area,
+  and temporarily erase existing overlay data. From now no do not change dataset or open annotation files.
+  Refrain from skeleton or segmentation operations
+- At any given moment, the active basin is selected in the Pending table. The table lists the subobject
+  ID of the basin, the coordinates of its main seed, and coordinates of additional "Subseeds". The Auto Slack
+  basin has no main seed (denoted by a false zero coordinate), and its seeds are not listed
+- The knossos viewport is showing the result of the watershed, masked to show only the active basin, with an
+  overlay color unique to that basin. The rest of the volume remains uncolored
+- To split a new basin from the active basin, place the main seed of the new basin by pressing the mouse
+  middle-button (or wheel).
+  This will allocate an ID for the new basin, and feed the seeds of all basins with the membrane prediction
+  distance transform to the watershed. The new basin will be listed at the end of the Pending table, while
+  the reduced active basin will be updated in the viewport
+- Errors might appear upon seeding in these cases:
+-- The clicked voxel is already associated with another basin
+-- The reduced active basin or the newly-labelled basin are too small
+- Attempting to seed a voxel belonging to another basin will jump to the Z-position of its main seed
+- To achieve better precision, first place subseeds by holding the Shift key while seeding, before placing
+  the main seed as above (without holding the Shift). Subseed placement can be cancelled by pressing
+  the Reset Subseeds button
+- Undo the last basin split-off by clicking the Undo Last button
+- Change the active basin by clicking the row of another basin in the Pending table. This will update the
+  watershed masking in the viewport, and jump to the main seed of the basin (except for the Auto Slack, that
+  has no main seed). When the pending table has focus, one can use Up and Down arrow keys to change selection
+- Double-click a basin in the Pending table to relist it in the Done table instead
+  Another basin will automatically be selected as active in the Pending table.
+- A basin in the Done table cannot be set to active. Clicking it will only jump to its main seed Z-position
+- When all basins are listed in the Done table and no basins are listed in the Pending table, no basin is active
+- Double-click a basin in the Done table to bring it back to the Pending table, thereby allowing to reactivate it
+- To delete a basin select its row, then press the Del key. This will omit it from the table, jump to the
+  Z-position of its main seed, recalculate the watershed on all seeds, and activate the basin which now contains
+  the of the main seed (in case this basin was listed as Done, it will be relisted as Pending)
+- Holding the Control key while placing the main seed denoted the new basin as slack. Slack basins are listed
+  with an italic font. Toggle slack classification by selecting the 
+- Select a basin row, and click Control+B to mark it as TODO (font becomes bold). Click again to toggle off
+- The cursor shape changes when operations are carried on (watershed / changing position / supercube loading).
+  Wait for the cursor to go back to normal before proceeding in operation
+- Press reset at any time to discard your work and go back to normal knossos operation
+- Once finished, click Finish to write labels to knossos
+
+Workflow
+- Upon beginning in the default Auto Slack mode, the initial active basin is the Auto Slack
+- Otherwise, no basin is active. In this case seed the initial basin, which would then become active
+- Split one cell off by seeding it. This may either split off a single cell or several cells
+- Splitting off may derive a new basin which contains a part of the active basin seeded cell. Alternatively, a
+  split-off basin may contain only part of a cell, while another part of the cell remains associated with
+  the active basin. In such cases undo it, go back to the active basin and try again by placing
+  more subseeds in those regions that were mislabelled. If this still fails, mark the cell as TODO
+- Split off slacks only when big enough. Small slacks "sticking" to cells can be refined more efficiently elsewhere
+- Continue splitting cells off active basin until no cells are left associated except the one containing the seed
+  Then relist the it as done
+- Repeat the process for the next pending basin etc., until all basins are done
+- When in Auto Slack mode, always keep the Auto Slack basin pending. Then when all other basins are done,
+  repeat the workflow on the Auto Slack (and potential new basins) to split off any potentially reassociated
+  deleted basins that were classified as slack by the watershed
+- Finish. Then open the segmentation tab in the annotation widget to observed the subobjects and their containing
+  objects (enter WatershedSplitter in the comment filter).
+  Pay special attention to TODO cells (enter Todo in the comment filter). Use the segmentation brush to refine
+  the labelling of each cell by adding falsely classified slack into cells or splitting excess slack off cells.
+  Merge cells that were falsely split-off, or create new objects for splitting apart distinct cells that were
+  falsely labelled as a single cell
+"""
     SUBOBJECT_TABLE_GROUP_STR = "Subobject Table"
     SUBOBJECT_ID_COLUMN_STR = "ID"
     SUBOBJECT_COORD_COLUMN_STR = "Coordinate"
@@ -127,6 +204,10 @@ Operation:
         self.undoButton.enabled = False
         self.undoButton.clicked.connect(self.undoButtonClicked)
         opButtonsLayout.addWidget(self.undoButton)
+        self.undoLastButton = QtGui.QPushButton("Undo Last")
+        self.undoLastButton.enabled = False
+        self.undoLastButton.clicked.connect(self.undoLastButtonClicked)
+        opButtonsLayout.addWidget(self.undoLastButton)
         self.resetButton = QtGui.QPushButton("Reset")
         self.resetButton.enabled = False
         self.resetButton.clicked.connect(self.resetButtonClicked)
@@ -165,6 +246,17 @@ Operation:
         self.doneSubObjTable.itemSelectionChanged.connect(self.doneSubObjTableSelectionChanged)
         self.doneSubObjTable.cellDoubleClicked.connect(self.doneSubObjTableCellDoubleClicked)
         self.finalizeTable(self.doneSubObjTable)
+        # Instructions
+        self.instructionsWidget = QtGui.QWidget()
+        self.instructionsWidget.setWindowTitle("Watershed Plugin Instructions")
+        instructionsLayout = QtGui.QVBoxLayout()
+        self.instructionsWidget.setLayout(instructionsLayout)
+        self.instructionsTextEdit = QtGui.QTextEdit()
+        self.instructionsTextEdit.setPlainText(self.INSTRUCTION_TEXT_STR)
+        self.instructionsTextEdit.setAlignment(Qt.Qt.AlignJustify)
+        self.instructionsTextEdit.setReadOnly(True)
+        instructionsLayout.addWidget(self.instructionsTextEdit)
+        self.instructionsWidget.resize(600,400)
         # Invisibles
         self.workWidgetWidthEdit = QtGui.QLineEdit()
         self.workWidgetHeightEdit = QtGui.QLineEdit()
@@ -343,7 +435,8 @@ Operation:
         return
 
     def instructionsButtonClicked(self):
-        QtGui.QMessageBox.information(0, "Instructions", self.INSTRUCTION_TEXT_STR)
+        self.instructionsWidget.show()
+        # QtGui.QMessageBox.information(0, "Instructions", self.INSTRUCTION_TEXT_STR)
         return
 
     def dirBrowseButtonClicked(self):
@@ -642,6 +735,7 @@ Operation:
         self.mapIdToMoreCoords[Id] = [curCoord[0] for curCoord in self.moreCoords]
         self.moreCoords = []
         self.undoButton.enabled = False
+        self.undoLastButton.enabled = True
         self.pushTableStackId(isDone,Id,atFirst=True)
         self.refreshTable(isDone)
         self.noApplyMask = True
@@ -670,6 +764,8 @@ Operation:
         self.noApplyMask = True
         self.noJump = True
         for Id in Ids:
+            if Id == self.lastObjId:
+                self.undoLastButton.enabled = False
             coordTuples = self.mapIdToSeedTuples[Id]
             self.seedMatrixDelId(Id)
             coord = self.mapIdToCoord[Id]
@@ -792,7 +888,7 @@ Operation:
     def jumpToCoord(self, coord):
         if self.noJump:
             return
-        self.setPositionWrap(coord)
+        self.setPositionWrap((self.middleX, self.middleY, coord[2]))
         return
 
     def waitForLoader(self):
@@ -844,8 +940,13 @@ Operation:
         if self.WS_mask[coord_offset] == False:
             self.jumpToId(self.WS[coord_offset])
             return
-        if self.seedMatrix[coord_offset] <> 0:
-            
+        seedId = self.seedMatrix[coord_offset]
+        if seedId <> 0:
+            if seedId == self.slackObjId:
+                idStr = "slack"
+            else:
+                idStr = "ID " + str(seedId)
+            QtGui.QMessageBox.information(0, "Error", "Already contains seed for %s!\n" % idStr)
             return
         mods = event.modifiers()
         if mods == 0:
@@ -864,6 +965,12 @@ Operation:
         self.setActiveNode()
         self.moreCoords = []
         self.undoButton.enabled = False
+        return
+
+    def undoLastButtonClicked(self):
+        self.undoButtonClicked()
+        self.removeSeeds([self.lastObjId])
+        self.undoLastButton.enabled = False
         return
 
     def flatCoordsToCoords(self, flatCubeCoords):
@@ -919,7 +1026,6 @@ Operation:
         return
 
     def commonEnd(self):
-        knossos.resetMovementArea()
         self.active = False
         map(self.clearTable,[False,True])
         for treeId in self.mapIdToTreeId.values():
@@ -937,8 +1043,9 @@ Operation:
         self.beginButton.enabled = False
         self.resetButton.enabled = True
         self.finishButton.enabled = True
+        self.undoButton.enabled = False
+        self.undoLastButton.enabled = False
         self.onChange = False
-        self.undoPrevEnabled = False
         Qt.QApplication.processEvents()
         self.resize(int(self.workWidgetWidthEdit.text),int(self.workWidgetHeightEdit.text))
         return
@@ -951,6 +1058,7 @@ Operation:
         self.subObjTableGroupBox.hide()
         self.beginButton.enabled = True
         self.undoButton.enabled = False
+        self.undoLastButton.enabled = False
         self.resetButton.enabled = False
         self.finishButton.enabled = False
         Qt.QApplication.processEvents()
@@ -985,7 +1093,7 @@ Operation:
         else:
             self.seedMatrix = self.newValMatrix(0)
         self.distMemPred = self.distMemPred[pad:-pad,pad:-pad,pad:-pad]
-        self.distMemPred = self.scaleMatrix(self.distMemPred,0,1)
+        self.distMemPred = self.scaleMatrix(self.distMemPred,0,10000)
         self.applyMask()
         return
 
@@ -1006,10 +1114,8 @@ Operation:
                 self.WS[self.WS == Id] = self.slackObjId
                 continue
             segmentation.subobjectFromId(Id, coord)
-            if self.mapIdToTodo[Id]:
-                objIndex = segmentation.largestObjectContainingSubobject(Id,(0,0,0))
-                segmentation.changeComment(objIndex,"WatershedSplitter")
-                pass
+            objIndex = segmentation.largestObjectContainingSubobject(Id,(0,0,0))
+            segmentation.changeComment(objIndex,"WatershedSplitter_" + {False:"Done",True:"Todo"}[self.mapIdToTodo[Id]])
         return
 
     def beginSeeds(self):
@@ -1066,7 +1172,9 @@ Operation:
             self.knossos_beginCoord_arr = numpy.array(self.str2tripint(str(self.workAreaBeginEdit.text)))-numpy.array([1]*3)
             self.beginCoord_arr = self.knossos_beginCoord_arr - self.margin
             self.knossos_endCoord_arr = self.knossos_beginCoord_arr + self.knossos_dims_arr - 1
-            self.setPositionWrap(tuple((self.knossos_beginCoord_arr + self.knossos_endCoord_arr) / 2))
+            self.middleCoord_arr = (self.knossos_beginCoord_arr + self.knossos_endCoord_arr) / 2
+            self.middleX, self.middleY = self.middleCoord_arr[0:2]
+            self.setPositionWrap(tuple(self.middleCoord_arr))
             self.beginSeeds()
             self.beginMatrices()
             knossos.setMovementArea(list(self.knossos_beginCoord_arr), list(self.knossos_endCoord_arr))
@@ -1086,6 +1194,7 @@ Operation:
     def resetButtonClicked(self):
         self.writeMatrix(self.orig)
         self.commonEnd()
+        knossos.resetMovementArea()
         return
 
     def finishButtonClicked(self):
