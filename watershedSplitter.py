@@ -792,7 +792,23 @@ Operation:
     def jumpToCoord(self, coord):
         if self.noJump:
             return
+        self.setPositionWrap(coord)
+        return
+
+    def waitForLoader(self):
+        busyScope = self.BusyCursorScope()
+        while knossos.loaderDownloadCount() > 0:
+            Qt.QApplication.processEvents()
+            time.sleep(0)
+        return
+
+    def setPositionWrap(self, coord):
+        curNum = knossos.loaderLoadingNr()
         knossos.setPosition(coord)
+        newNum = knossos.loaderLoadingNr()
+        if curNum == newNum:
+            return
+        self.waitForLoader()
         return
 
     def jumpToId(self, Id):
@@ -829,7 +845,7 @@ Operation:
             self.jumpToId(self.WS[coord_offset])
             return
         if self.seedMatrix[coord_offset] <> 0:
-            QtGui.QMessageBox.information(0, "Error", "Another seed already placed!")
+            
             return
         mods = event.modifiers()
         if mods == 0:
@@ -870,6 +886,7 @@ Operation:
         return matrix.__array_interface__["data"][0]
 
     def accessMatrix(self, matrix, isWrite):
+        self.waitForLoader()
         return knossos.processRegionByStridedBufProxy(list(self.knossos_beginCoord_arr), list(self.knossos_dims_arr), self.npDataPtr(matrix), matrix.strides, isWrite, True)
 
     def writeMatrix(self, matrix):
@@ -1049,9 +1066,9 @@ Operation:
             self.knossos_beginCoord_arr = numpy.array(self.str2tripint(str(self.workAreaBeginEdit.text)))-numpy.array([1]*3)
             self.beginCoord_arr = self.knossos_beginCoord_arr - self.margin
             self.knossos_endCoord_arr = self.knossos_beginCoord_arr + self.knossos_dims_arr - 1
+            self.setPositionWrap(tuple((self.knossos_beginCoord_arr + self.knossos_endCoord_arr) / 2))
             self.beginSeeds()
             self.beginMatrices()
-            knossos.setPosition(tuple((self.knossos_beginCoord_arr + self.knossos_endCoord_arr) / 2))
             knossos.setMovementArea(list(self.knossos_beginCoord_arr), list(self.knossos_endCoord_arr))
             self.tableHash = {True:{"Stack":[],"Table":self.doneSubObjTable,"Click":self.doneSubObjTableCellClicked,"DoubleClick":self.doneSubObjTableCellDoubleClicked},\
                               False:{"Stack":[],"Table":self.pendSubObjTable,"Click":self.pendSubObjTableCellClicked,"DoubleClick":self.pendSubObjTableCellDoubleClicked}}
