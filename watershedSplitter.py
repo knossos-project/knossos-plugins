@@ -1089,7 +1089,7 @@ Workflow
         else:
             self.seedMatrix = self.newValMatrix(0)
         self.distMemPred = self.distMemPred[pad:-pad,pad:-pad,pad:-pad]
-        self.distMemPred = self.scaleMatrix(self.distMemPred,0,10000)
+        self.distMemPred = self.scaleMatrix(self.distMemPred,0,1)
         self.applyMask()
         return
 
