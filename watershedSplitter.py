@@ -5,15 +5,15 @@ from skimage.morphology import watershed
 DatasetUtils._set_noprint(True)
 from matplotlib import pyplot as plt
 
-#KNOSSOS_PLUGIN Name WatershedSplitter
+#KNOSSOS_PLUGIN Name WatershedCubeSegmentor
 #KNOSSOS_PLUGIN Version 1
 #KNOSSOS_PLUGIN Description Iteratively split a volume into subobjects using a watershed algorithm on a pre-calculated prediction
 
-class watershedSplitter(QtGui.QWidget):
+class watershedCubeSegmentor(QtGui.QWidget):
     INSTRUCTION_TEXT_STR = """
 Concept:
 
-Watershed Splitter is a knossos annotation plugin that facilitates the spliting a cubic volume into several distinct "objects", and their surrounding "slack". In the brain this means neurons (or glia cells) and extracelluar space (ECS), respectively. To achieve this, each cell is considered a "basin", and one or more "seeds" are placed at the "bottom level" of the basin. The seeds, together with a prediction of the topography of the barriers between cells, are fed to a "watershed" algorithm. There, all basins are "flooded with water", until waters of different basins meet at predicted barriers. Each flooded basin is labelled as a distinct cell. In order to bridge gaps in barrier prediction, a distance transform on the prediction is fed to the watershed instead of the original prediction.
+Watershed Cube Segmentor is a knossos annotation plugin that facilitates the spliting a cubic volume into several distinct "objects", and their surrounding "slack". In the brain this means neurons (or glia cells) and extracelluar space (ECS), respectively. To achieve this, each cell is considered a "basin", and one or more "seeds" are placed at the "bottom level" of the basin. The seeds, together with a prediction of the topography of the barriers between cells, are fed to a "watershed" algorithm. There, all basins are "flooded with water", until waters of different basins meet at predicted barriers. Each flooded basin is labelled as a distinct cell. In order to bridge gaps in barrier prediction, a distance transform on the prediction is fed to the watershed instead of the original prediction.
 
 Instead of seeding all basins at once, this plugins employs an iterative workflow. At first, basin A is seeded and the watershed floods the entire volume. Then basin B is seeded and the watershed is calculated again, therefor only part of the volume is labelled A, while the rest was split off A and is now labelled B. Now, basin C is placed in an area still labelled as A. Thereby, the watershed again splits off some of the volume of A and labels it C. Eventually, the area labelled as A roughly matches the actual cell that was seeded at the coordinate of basin A.
 
@@ -95,7 +95,7 @@ Workflow
   repeat the workflow on the Auto Slack (and potential new basins) to split off any potentially reassociated
   deleted basins that were classified as slack by the watershed
 - Finish. Then open the segmentation tab in the annotation widget to observed the subobjects and their containing
-  objects (enter WatershedSplitter in the comment filter).
+  objects (enter WatershedCubeSegmentor in the comment filter).
   Pay special attention to TODO cells (enter Todo in the comment filter). Use the segmentation brush to refine
   the labelling of each cell by adding falsely classified slack into cells or splitting excess slack off cells.
   Merge cells that were falsely split-off, or create new objects for splitting apart distinct cells that were
@@ -138,7 +138,7 @@ Workflow
         pass
 
     def initGUI(self):
-        self.setWindowTitle("Watershed Splitter")
+        self.setWindowTitle("Watershed Cube Segmentor")
         self.widgetLayout = QtGui.QVBoxLayout()
         self.setLayout(self.widgetLayout)
         instructionsButton = QtGui.QPushButton("See Instructions")
@@ -270,7 +270,7 @@ Workflow
         return
 
     def __init__(self, parent=knossos_global_mainwindow):
-        super(watershedSplitter, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
+        super(watershedCubeSegmentor, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
         self.initGUI()
         self.initLogic()
         return
@@ -345,7 +345,7 @@ Workflow
 
     def initLogic(self):
         self.active = False
-        self.pluginConf = "Plugin_WatershedSplitter"
+        self.pluginConf = "Plugin_WatershedCubeSegmentor"
         self.settings = \
                       [(self.dirEdit,"DIR",""),
                         (self.baseSubObjIdEdit,"BASE_SUB_OBJ_ID","10000000"), \
@@ -1111,7 +1111,7 @@ Workflow
                 continue
             segmentation.subobjectFromId(Id, coord)
             objIndex = segmentation.largestObjectContainingSubobject(Id,(0,0,0))
-            segmentation.changeComment(objIndex,"WatershedSplitter_" + {False:"Done",True:"Todo"}[self.mapIdToTodo[Id]])
+            segmentation.changeComment(objIndex,"WatershedCubeSegmentor_" + {False:"Done",True:"Todo"}[self.mapIdToTodo[Id]])
         return
 
     def beginSeeds(self):
@@ -1222,4 +1222,4 @@ Workflow
 
     pass
 
-plugin_container.append(watershedSplitter())
+plugin_container.append(watershedCubeSegmentor())
