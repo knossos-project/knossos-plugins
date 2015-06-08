@@ -893,17 +893,13 @@ Workflow
 
     def waitForLoader(self):
         busyScope = self.BusyCursorScope()
-        while knossos.loaderDownloadCount() > 0:
+        while knossos_global_loader.getRefCount() > 0:
             Qt.QApplication.processEvents()
             time.sleep(0)
         return
 
     def setPositionWrap(self, coord):
-        curNum = knossos.loaderLoadingNr()
         knossos.setPosition(coord)
-        newNum = knossos.loaderLoadingNr()
-        if curNum == newNum:
-            return
         self.waitForLoader()
         return
 
