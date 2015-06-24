@@ -1,5 +1,5 @@
 from PythonQt import QtGui, Qt
-import numpy
+import numpy, traceback, re, time
 from scipy import ndimage
 from skimage.morphology import watershed
 
