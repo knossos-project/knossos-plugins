@@ -282,10 +282,10 @@ class ConnectivityViewer(PyQMainWindow):
         signalRelay.Signal_MainWindow_closeEvent.connect(quit_viewer)
 
     def file_dialog_request(self):
-        # path = QFileDialog.getOpenFileName(None, "Select a connectivity file", QDir.homePath(), "Synapse file (*.graphml, *.k.zip)")
-        # if len(path) > 0:
-        #     self.load_synapse_file(path)
-        self.load_synapse_file("/home/tieni/Desktop/synapses.graphml")
+        path = QFileDialog.getOpenFileName(None, "Select a connectivity file", QDir.homePath(), "Synapse file (*.graphml, *.k.zip)")
+        if len(path) > 0:
+            self.load_synapse_file(path)
+        # self.load_synapse_file("/home/tieni/Desktop/synapses.graphml")
 
     def load_synapse_file(self, path):
         """
