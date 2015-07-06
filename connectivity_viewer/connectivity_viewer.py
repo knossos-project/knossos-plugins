@@ -351,10 +351,9 @@ class ConnectivityViewer(QMainWindow):
         self.matrix_editor.apply_button.clicked.connect(self.apply_new_view)
 
     def file_dialog_request(self):
-        # path = QFileDialog.getOpenFileName(None, "Select a connectivity file", QDir.homePath(), "Synapse file (*.graphml, *.k.zip)")
-        # if len(path) > 0:
-        #     self.load_synapse_file(path)
-        self.load_synapse_file("/home/tieni/Desktop/wiring.graphml")
+        path = QFileDialog.getOpenFileName(None, "Select a connectivity file", QDir.homePath(), "Synapse file (*.graphml, *.k.zip)")
+        if len(path) > 0:
+            self.load_synapse_file(path)
 
     def load_synapse_file(self, path):
         def do():
