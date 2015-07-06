@@ -2,19 +2,22 @@
 __author__ = 'tieni'
 
 import matplotlib
-matplotlib.use("Qt5Agg")
+matplotlib.use('module://backend_qt5agg')
 from matplotlib import cm, colors, pyplot as plt
-from matplotlib.backends.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
+from .backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.figure import Figure
+from matplotlib.gridspec import GridSpec
 
 from networkx import read_graphml
 
-from PythonQt.QtGui import QAbstractItemView, QFileDialog, QGridLayout, QPushButton, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget
+from PythonQt.QtCore import QObject, SIGNAL, SLOT
+from PythonQt.QtGui import QAbstractItemView, QFileDialog, QGridLayout, QHeaderView, QPushButton, QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,\
+                            QLabel, QMainWindow, QMenu, QSizePolicy, QWidget, QVBoxLayout
 from PythonQt import Qt
 
-from PyQt5.QtCore import pyqtSignal
-from PyQt5.QtWidgets import QLabel as PyQLabel, QMainWindow as PyQMainWindow, QMenu as PyQMenu, QSizePolicy as PyQSizePolicy, QWidget as PyQWidget, QVBoxLayout as PyQVBoxLayout
-from PyQt5.Qt import Qt as PyQt
+# from PyQt5.QtCore import pyqtSignal
+# from PyQt5.QtWidgets import QLabel as PyQLabel, QMainWindow as PyQMainWindow, QMenu as PyQMenu, QSizePolicy as PyQSizePolicy, QWidget as PyQWidget, QVBoxLayout as PyQVBoxLayout
+# from PyQt5.Qt import Qt as PyQt
 
 from zipfile import ZipFile
 
@@ -118,13 +121,15 @@ class MatrixEditor(QWidget):
         self.source_neurons = []
         self.target_neurons = []
 
-        self.neuron_table = QTreeWidget()
-        self.source_table = QTreeWidget()
-        self.target_table = QTreeWidget()
+        self.neuron_table = QTableWidget()
+        self.source_table = QTableWidget()
+        self.target_table = QTableWidget()
 
         def init_table(table, name):
-            table.setHeaderLabels((name,))
             table.setColumnCount(1)
+            table.verticalHeader().setVisible(False)
+            table.setHorizontalHeaderLabels((name,))
+            table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch);
             table.setDragDropMode(QAbstractItemView.DragDrop)
         init_table(self.neuron_table, "Unused neurons")
         init_table(self.source_table, "Source neurons")
@@ -133,61 +138,76 @@ class MatrixEditor(QWidget):
         self.clear_source_button = QPushButton("Clear")
         self.clear_target_button = QPushButton("Clear")
         self.reset_button = QPushButton("Reset matrix")
-
-        def clear_sources():
-            self.source_table.clear()
-            self.unused_neurons.append(self.source_neurons)
-            self.source_neurons = []
-
-        def clear_targets():
-            self.target_table.clear()
-            self.unused_neurons.append(self.target_neurons)
-            self.target_neurons = []
-        self.clear_source_button.clicked.connect(clear_sources)
-        self.clear_target_button.clicked.connect(clear_targets)
+        self.apply_button = QPushButton("Apply")
 
         layout = QGridLayout()
-        layout.addWidget(self.neuron_table, 0, 0, columnSpan=-1)
+        layout.addWidget(self.neuron_table, 0, 0, rowSpan=1, columnSpan=-1)
         layout.addWidget(self.source_table, 1, 0)
         layout.addWidget(self.target_table, 1, 1)
         layout.addWidget(self.clear_source_button, 2, 0)
         layout.addWidget(self.clear_target_button, 2, 1)
-        layout.addWidget(self.reset_button, 3, 0, columnSpan=-1)
+        layout.addWidget(self.reset_button, 3, 0)
+        layout.addWidget(self.apply_button, 3, 1)
         self.setLayout(layout)
 
-    def set_default_view(self):
-        self.source_table.clear()
-        self.target_table.clear()
-        source_items = [QTreeWidgetItem(self.source_table, (neuron,)) for neuron in Synapse.source_neurons]
-        target_items = [QTreeWidgetItem(self.target_table, (neuron,)) for neuron in Synapse.target_neurons]
-        self.source_table.addTopLevelItems(source_items)
-        self.target_table.addTopLevelItems(target_items)
+        def clear_sources():
+            self.source_table.clearContents()
+            self.unused_neurons.append(self.source_neurons)
+            self.source_neurons = []
+
+        def clear_targets():
+            self.target_table.clearContents()
+            self.unused_neurons.append(self.target_neurons)
+            self.target_neurons = []
+
+        self.clear_source_button.clicked.connect(clear_sources)
+        self.clear_target_button.clicked.connect(clear_targets)
+        self.reset_button.clicked.connect(self.default_view)
+
+    def default_view(self):
+        self.source_table.clearContents()
+        self.target_table.clearContents()
+        self.source_neurons = Synapse.source_neurons
+        self.target_neurons = Synapse.target_neurons
+        self.source_table.setRowCount(len(self.source_neurons))
+        self.target_table.setRowCount(len(self.target_neurons))
+        for i, neuron in enumerate(self.source_neurons):
+            self.source_table.setItem(i, 0, QTableWidgetItem(neuron))
+        for i, neuron in enumerate(self.target_neurons):
+            self.target_table.setItem(i, 0, QTableWidgetItem(neuron))
+        # source_items = [QTableWidgetItem(neuron) for neuron in self.source_neurons]
+        # target_items = [QTableWidgetItem(neuron) for neuron in self.target_neurons]
+        # self.source_table.addTopLevelItems(source_items)
+        # self.target_table.addTopLevelItems(target_items)
 
 class MatplotlibCanvas(FigureCanvas):
     """
     The MatplotlibCanvas contains the visualized connectivity matrix
     """
-    hovered = pyqtSignal(int, int)
-    clicked = pyqtSignal(tuple)
+    # hovered = pyqtSignal(int, int)
+    # clicked = pyqtSignal(tuple)
 
     def __init__(self, parent=None):
         self.figure = Figure()
-        self.axes = self.figure.add_subplot(111)
-        self.axes.hold(False)  # clear axes every time we call plot()
+        gridspec = GridSpec(1, 15)
+        matrix_axes_spec = gridspec.new_subplotspec((0, 0), colspan=13)
+        color_axes_spec = gridspec.new_subplotspec((0, 14), colspan=1)
+        self.matrix_axes = self.figure.add_subplot(matrix_axes_spec)
+        self.color_axes = self.figure.add_subplot(color_axes_spec)
 
         FigureCanvas.__init__(self, self.figure)
-        FigureCanvas.setSizePolicy(self, PyQSizePolicy.Expanding, PyQSizePolicy.Expanding)
+        FigureCanvas.setSizePolicy(self, QSizePolicy.Expanding, QSizePolicy.Expanding)
         FigureCanvas.updateGeometry(self)
 
         self.synapse_matrix = np.array([], dtype=np.uint32)
         self.hovered_cell = None
 
-    def build_connectivity_matrix(self):
+    def build_connectivity_matrix(self, source_neurons, target_neurons):
         # fill data matrix
-        self.synapse_matrix = np.zeros((len(Synapse.source_neurons), len(Synapse.target_neurons)), dtype=np.uint32)
+        self.synapse_matrix = np.zeros((len(source_neurons), len(target_neurons)), dtype=np.uint32)
         for neurons, synapse_list in Synapse.synapses.items():
-            row = Synapse.source_neurons.index(neurons[0])
-            col = Synapse.target_neurons.index(neurons[1])
+            row = source_neurons.index(neurons[0])
+            col = target_neurons.index(neurons[1])
             self.synapse_matrix[row, col] = len(synapse_list)
 
         # plot the data
@@ -195,39 +215,39 @@ class MatplotlibCanvas(FigureCanvas):
         mapped_colors = palette(np.linspace(0, 1, 1 + np.max(self.synapse_matrix) - np.min(self.synapse_matrix)))
         color_map = colors.ListedColormap(mapped_colors)
         # plot synapse matrix
-        color_mesh = self.axes.pcolormesh(self.synapse_matrix, cmap=color_map)
+        color_mesh = self.matrix_axes.pcolormesh(self.synapse_matrix, cmap=color_map)
         # hide tick lines
-        for tic in self.axes.xaxis.get_major_ticks():
+        for tic in self.matrix_axes.xaxis.get_major_ticks():
             tic.tick1On = tic.tick2On = False
-        for tic in self.axes.yaxis.get_major_ticks():
+        for tic in self.matrix_axes.yaxis.get_major_ticks():
             tic.tick1On = tic.tick2On = False
         # place ticks at middle of each row / column
-        self.axes.set_xticks(np.arange(len(Synapse.target_neurons)) + 0.5)
-        self.axes.set_yticks(np.arange(len(Synapse.source_neurons)) + 0.5)
+        self.matrix_axes.set_xticks(np.arange(len(target_neurons)) + 0.5)
+        self.matrix_axes.set_yticks(np.arange(len(source_neurons)) + 0.5)
         # add tick labels
-        self.axes.set_yticklabels(Synapse.source_neurons)
-        self.axes.set_xticklabels(Synapse.target_neurons)
+        self.matrix_axes.set_yticklabels(source_neurons)
+        self.matrix_axes.set_xticklabels(target_neurons)
         self.figure.autofmt_xdate()  # rotate x axis labels to fit more
         # plot color bar
         bounds = np.arange(len(np.unique(self.synapse_matrix)) + 1)
-        colorbar = plt.colorbar(color_mesh, boundaries=bounds, values=bounds[:-1], ax=self.axes)
+        colorbar = plt.colorbar(color_mesh, boundaries=bounds, values=bounds[:-1], cax=self.color_axes, orientation='vertical')
         colorbar.set_ticks(bounds[:-1] + .5)
         bar_ticks = np.arange(np.min(self.synapse_matrix), 1 + np.max(self.synapse_matrix))
         colorbar.set_ticklabels(bar_ticks)
 
         def cell_clicked(event):
-            if event.inaxes == self.axes:
+            if event.inaxes == self.matrix_axes:
                 pos = int(event.xdata), int(event.ydata)
-                neuron_pair = (Synapse.source_neurons[pos[1]], Synapse.target_neurons[pos[0]])
-                self.clicked.emit(neuron_pair)
+                neuron_pair = (source_neurons[pos[1]], target_neurons[pos[0]])
+                self.emit(SIGNAL("clicked"), neuron_pair)
 
         def mouse_moved(event):
-            if event.inaxes == self.axes:
+            if event.inaxes == self.matrix_axes:
                 index = (int(event.xdata), int(event.ydata))
                 if self.hovered_cell == index:
                     return
                 self.hovered_cell = index
-                self.hovered.emit(index[1], index[0])
+                self.emit(SIGNAL("hovered"), index[1], index[0])
 
         self.figure.canvas.mpl_connect('motion_notify_event', mouse_moved)
         self.figure.canvas.mpl_connect('button_press_event', cell_clicked)
@@ -237,55 +257,54 @@ class MatplotlibCanvas(FigureCanvas):
         self.synapse_matrix = np.array([])
 
 
-class ConnectivityViewer(PyQMainWindow):
+
+class ConnectivityViewer(QMainWindow):
     """
     This is the plugin's main window, containing a menubar for loading a synapse file and holding the MatplotlibCanvas
     """
-    synapse_file_loaded = pyqtSignal()
+    # synapse_file_loaded = pyqtSignal()
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=knossos_global_mainwindow):
         super(ConnectivityViewer, self).__init__(parent)
-        self.setWindowFlags(PyQt.Window)
-        self.setAttribute(PyQt.WA_DeleteOnClose)
+        self.setWindowFlags(Qt.Qt.Window)
+        self.setAttribute(Qt.Qt.WA_DeleteOnClose)
         self.setWindowTitle("Connectivity Viewer")
 
         self.synapse_viewer = SynapseViewer()
         self.matrix_editor = MatrixEditor()
         self.annotation_files = []
 
-        self.file_menu = PyQMenu("File")
+        self.file_menu = QMenu("File")
         self.file_menu.addAction("Load Synapse file", self.file_dialog_request)
         self.file_menu.addAction("Edit Matrix", self.matrix_editor.show)
         self.file_menu.addAction("Quit", self.close)
         self.menuBar().addMenu(self.file_menu)
 
-        self.synapse_label = PyQLabel("")
-        self.main_widget = PyQWidget(self)
+        self.synapse_label = QLabel("")
+        self.main_widget = QWidget(self)
         self.main_widget.setFocus()
         self.setCentralWidget(self.main_widget)
         self.matrix_canvas = MatplotlibCanvas(self.main_widget)
 
-        layout = PyQVBoxLayout(self.main_widget)
+        layout = QVBoxLayout(self.main_widget)
         layout.addWidget(self.synapse_label)
         layout.addWidget(self.matrix_canvas)
 
-        def draw_synapse_label(src_index, target_index):
-            num_synapses = self.matrix_canvas.synapse_matrix[src_index, target_index]
-            self.synapse_label.setText('"{0}" → "{1}": {2} Synapses'.format(Synapse.source_neurons[src_index], Synapse.target_neurons[target_index], num_synapses))
-        self.matrix_canvas.hovered.connect(draw_synapse_label)
-        self.matrix_canvas.clicked.connect(self.synapse_viewer_called)
-        self.synapse_file_loaded.connect(self.matrix_canvas.build_connectivity_matrix)
-        self.synapse_file_loaded.connect(self.matrix_editor.set_default_view)
+        QObject.connect(self.matrix_canvas, SIGNAL("hovered"), self, SLOT("draw_synapse_label"))
+        QObject.connect(self.matrix_canvas, SIGNAL("clicked"), self, SLOT("synapse_viewer_called"))
 
-        def quit_viewer(eocd, close_event):
-            self.close()
-        signalRelay.Signal_MainWindow_closeEvent.connect(quit_viewer)
+        QObject.connect(self, SIGNAL("synapse_file_loaded"), self, SLOT("plot_default_matrix"))
+        self.matrix_editor.apply_button.clicked.connect(self.apply_new_view)
+
+        # def quit_viewer(eocd, close_event):
+        #     self.close()
+        # signalRelay.Signal_MainWindow_closeEvent.connect(quit_viewer)
 
     def file_dialog_request(self):
-        path = QFileDialog.getOpenFileName(None, "Select a connectivity file", QDir.homePath(), "Synapse file (*.graphml, *.k.zip)")
-        if len(path) > 0:
-            self.load_synapse_file(path)
-        # self.load_synapse_file("/home/tieni/Desktop/synapses.graphml")
+        # path = QFileDialog.getOpenFileName(None, "Select a connectivity file", QDir.homePath(), "Synapse file (*.graphml, *.k.zip)")
+        # if len(path) > 0:
+        #     self.load_synapse_file(path)
+        self.load_synapse_file("/home/tieni/Desktop/synapses.graphml")
 
     def load_synapse_file(self, path):
         """
@@ -313,7 +332,20 @@ class ConnectivityViewer(PyQMainWindow):
                 Synapse.synapses[(node, target)] = \
                     [Synapse(node, target, syn["id"], syn["size"], syn["type"]) for syn in synapses.values()]
 
-        self.synapse_file_loaded.emit()
+        self.emit(SIGNAL("synapse_file_loaded"))
+
+    def draw_synapse_label(self, src_index, target_index):
+        num_synapses = self.matrix_canvas.synapse_matrix[src_index, target_index]
+        self.synapse_label.setText('"{0}" → "{1}": {2} Synapses'.format(Synapse.source_neurons[src_index], Synapse.target_neurons[target_index], num_synapses))
+
+    def apply_new_view(self):
+        editor = self.matrix_editor
+        self.matrix_canvas.build_connectivity_matrix(editor.source_neurons, editor.target_neurons)
+        editor.close()
+
+    def plot_default_matrix(self):
+        self.matrix_editor.default_view()
+        self.apply_new_view()
 
     def synapse_viewer_called(self, neuron_pair):
         try:
