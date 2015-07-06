@@ -356,44 +356,42 @@ class ConnectivityViewer(QMainWindow):
             self.load_synapse_file(path)
 
     def load_synapse_file(self, path):
-        def do():
-            """
-            Reads in a .graphml synapse file and displays a connectivity matrix
-            """
-            self.reset()
-            graph = None
-            if path.endswith(".k.zip"):
-                with ZipFile(path, 'r') as annotation_file:
-                    for name in annotation_file.namelist():
-                        if name.endswith(".graphml"):
-                            graph = read_graphml(annotation_file.open(name))
-                    if graph is None:
-                        print("No synapse file found in", path)
-                        return
-                    skeleton.annotation_load(path, False)
+        """
+        Reads in a .graphml synapse file and displays a connectivity matrix
+        """
+        self.reset()
+        graph = None
+        if path.endswith(".k.zip"):
+            with ZipFile(path, 'r') as annotation_file:
+                for name in annotation_file.namelist():
+                    if name.endswith(".graphml"):
+                        graph = read_graphml(annotation_file.open(name))
+                if graph is None:
+                    print("No synapse file found in", path)
+                    return
+                skeleton.annotation_load(path, False)
 
-            else:  # ends with .graphml
-                graph = read_graphml(path)
+        else:  # ends with .graphml
+            graph = read_graphml(path)
 
-            Synapse.source_neurons = OrderedSet(neuron for neuron, degree in graph.out_degree().items() if degree > 0)
-            Synapse.target_neurons = OrderedSet(neuron for neuron, degree in graph.in_degree().items() if degree > 0)
-            for node in graph.nodes():
-                for target, synapses in graph[node].items():
-                    Synapse.synapses[(node, target)] = []
-                    for syn in synapses.values():
-                        syn_size = 0
-                        syn_type = ""
-                        try:
-                            syn_size = syn["size"]
-                        except KeyError:
-                            pass
-                        try:
-                            syn_type = syn["type"]
-                        except KeyError:
-                            pass
-                        Synapse.synapses[(node, target)].append(Synapse(node, target, syn["id"], syn_size, syn_type))
-            self.synapse_file_loaded.emit()
-        cProfile.runctx("do()", globals(), locals())
+        Synapse.source_neurons = OrderedSet(neuron for neuron, degree in graph.out_degree().items() if degree > 0)
+        Synapse.target_neurons = OrderedSet(neuron for neuron, degree in graph.in_degree().items() if degree > 0)
+        for node in graph.nodes():
+            for target, synapses in graph[node].items():
+                Synapse.synapses[(node, target)] = []
+                for syn in synapses.values():
+                    syn_size = 0
+                    syn_type = ""
+                    try:
+                        syn_size = syn["size"]
+                    except KeyError:
+                        pass
+                    try:
+                        syn_type = syn["type"]
+                    except KeyError:
+                        pass
+                    Synapse.synapses[(node, target)].append(Synapse(node, target, syn["id"], syn_size, syn_type))
+        self.synapse_file_loaded.emit()
 
     def draw_synapse_label(self, src_index, target_index):
         num_synapses = self.matrix_canvas.synapse_matrix[src_index, target_index]
