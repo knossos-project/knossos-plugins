@@ -59,6 +59,9 @@ Operation
 - To achieve better precision, first place subseeds by holding the Shift key while seeding, before placing
   the main seed as above (without holding the Shift). Subseed placement can be cancelled by pressing
   the Reset Subseeds button
+- To extend an active basin hold Alt while placing an additional seed outside the masked area.
+  Do not use this feature to merge objects, but only to claim back part of the active basin that was wrongfully
+  given to another basin (or the auto-slack) by the watershed
 - Undo the last basin split-off by clicking the Undo Last button
 - Change the active basin by clicking the row of another basin in the Pending table. This will update the
   watershed masking in the viewport, and jump to the main seed of the basin (except for the Auto Slack, that
@@ -436,7 +439,6 @@ Workflow
 
     def instructionsButtonClicked(self):
         self.instructionsWidget.show()
-        # QtGui.QMessageBox.information(0, "Instructions", self.INSTRUCTION_TEXT_STR)
         return
 
     def dirBrowseButtonClicked(self):
@@ -670,22 +672,20 @@ Workflow
     def addMoreCoords(self, coord, coord_offset, vpId):
         if not self.IsMoreCoords():
             self.undoButton.enabled = True
-        self.moreCoords.append((coord,coord_offset,vpId))
+        self.moreCoords.append((coord,coord_offset))
         self.addNode(coord, self.TreeIdById(self.nextId()), vpId)
         return
 
-    def seedMatrixDelId(self,Id):
-        for coordTuple in self.mapIdToSeedTuples[Id]:
+    def seedMatrixDelId(self,Id,coordTuples):
+        for coordTuple in coordTuples:
             coord_offset = coordTuple[1]
             self.seedMatrix[coord_offset] = 0
-        del self.mapIdToSeedTuples[Id]
         return
 
     def seedMatrixSetId(self,coordTuples,Id):
         for coordTuple in coordTuples:
             coord_offset = coordTuple[1]
             self.seedMatrix[coord_offset] = Id
-        self.mapIdToSeedTuples[Id] = coordTuples
         return
 
     def addNode(self,coord,treeId,vpId):
@@ -709,20 +709,20 @@ Workflow
         Id = self.nextId()
         if (self.lastObjId <> self.invalidId) and (self.curObjId == self.invalidId):
             QtGui.QMessageBox.information(0, "Error", "Select seed first!")
-        coordTuples = [(coord, coord_offset, vpId)] + self.moreCoords
+        coordTuples = [(coord, coord_offset)] + self.moreCoords
         self.seedMatrixSetId(coordTuples,Id)
         parentIds = self.addSeedGetParentIds(coordTuples)
         WS_temp = self.calcWS()
         newObjSize = self.countVal(WS_temp,Id)
         if newObjSize < self.minObjSize:
             QtGui.QMessageBox.information(0, "Error", "New object size (%d) too small!" % newObjSize)
-            self.seedMatrixDelId(Id)
+            self.seedMatrixDelId(Id,coordTuples)
             return
         for parentId in parentIds:
             parentObjSize = self.countVal(WS_temp,parentId)
             if parentObjSize < self.minObjSize:
                 QtGui.QMessageBox.information(0, "Error", "Parent object (%d) new size (%d) too small!" % (parentId, parentObjSize))
-                self.seedMatrixDelId(Id)
+                self.seedMatrixDelId(Id,coordTuples)
                 return
         self.WS[self.WS_mask] = WS_temp[self.WS_mask]
         isDone = False
@@ -766,9 +766,12 @@ Workflow
         for Id in Ids:
             if Id == self.lastObjId:
                 self.undoLastButton.enabled = False
-            coordTuples = self.mapIdToSeedTuples[Id]
-            self.seedMatrixDelId(Id)
             coord = self.mapIdToCoord[Id]
+            moreCoords = self.mapIdToMoreCoords[Id]
+            coords = [coord] + moreCoords
+            coordTuples = [(curCoord, self.coordOffset(curCoord)) for curCoord in coords]
+            self.seedMatrixDelId(Id,coordTuples)
+            del self.mapIdToMoreCoords[Id]
             del self.mapCoordToId[coord]
             del self.mapIdToCoord[Id]
             isDone = self.mapIdToDone[Id]
@@ -893,7 +896,7 @@ Workflow
 
     def waitForLoader(self):
         busyScope = self.BusyCursorScope()
-        while knossos_global_loader.getRefCount() > 0:
+        while not knossos_global_loader.isFinished():
             Qt.QApplication.processEvents()
             time.sleep(0)
         return
@@ -933,9 +936,6 @@ Workflow
             return
         coord = tuple(clickedCoord.vector())
         coord_offset = self.coordOffset(coord)
-        if self.WS_mask[coord_offset] == False:
-            self.jumpToId(self.WS[coord_offset])
-            return
         seedId = self.seedMatrix[coord_offset]
         if seedId <> 0:
             if seedId == self.slackObjId:
@@ -945,8 +945,25 @@ Workflow
             QtGui.QMessageBox.information(0, "Error", "Already contains seed for %s!\n" % idStr)
             return
         mods = event.modifiers()
+        if self.WS_mask[coord_offset] == False:
+            if mods <> Qt.Qt.AltModifier:
+                self.jumpToId(self.WS[coord_offset])
+                return
+            # Extend current object
+            Id = self.curObjId
+            if not self.IsNormalId(Id):
+                QtGui.QMessageBox.information(0, "Error", "Can only extend a non-auto-slack object!\n")
+                return
+            self.seedMatrix[coord_offset] = Id
+            self.addNode(coord, self.TreeIdById(Id), vpId)
+            self.mapIdToMoreCoords[Id].append(coord)
+            isDone = False
+            self.refreshTable(isDone)
+            self.WS_mask = self.newTrueMatrix()
+            self.WS = self.calcWS()
+            self.applyMask()
+            return
         if mods == 0:
-            t = time.time()
             self.addSeed(coord,coord_offset,vpId)
         elif mods == Qt.Qt.ShiftModifier:
             self.addMoreCoords(coord,coord_offset,vpId)
@@ -1126,7 +1143,6 @@ Workflow
         self.mapIdToNodeId = {}
         self.mapIdToSlack = {}
         self.mapIdToTodo = {}
-        self.mapIdToSeedTuples = {}
         self.mapIdToDone = {}
         return
     
