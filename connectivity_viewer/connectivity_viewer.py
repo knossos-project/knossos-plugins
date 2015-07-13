@@ -4,9 +4,9 @@ __author__ = 'tieni'
 from copy import deepcopy
 import cProfile
 import matplotlib
-matplotlib.use('module://backend_qt5agg')
+matplotlib.use('module://backend.backend_qt5agg')
 from backend.backend_qt5agg import FigureCanvasQTAgg as FigureCanvas
-from backend.signal import Signal
+from backend.my_signal import Signal
 from matplotlib import cm, colors
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
@@ -16,9 +16,10 @@ from networkx import read_graphml
 import numpy as np
 from orderedset import OrderedSet
 
-from PythonQt.QtCore import QDir
-from PythonQt.QtGui import QAbstractItemView, QFileDialog, QGridLayout, QHeaderView, QPushButton, QTableWidget, QTableWidgetItem, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget,\
-                            QLabel, QMainWindow, QMenu, QSizePolicy, QWidget, QVBoxLayout
+from PythonQt.QtCore import QAbstractListModel, QDir, QModelIndex
+from PythonQt.QtGui import (QFileDialog, QGridLayout, QHeaderView, QLabel, QMainWindow, QMenu, QMessageBox, QPushButton,
+                            QSizePolicy, QTableWidget, QTableWidgetItem, QTreeView, QTreeWidget, QTreeWidgetItem,
+                            QVBoxLayout, QWidget)
 from PythonQt import Qt
 from zipfile import ZipFile
 
@@ -99,7 +100,7 @@ class SynapseViewer(QWidget):
         self.setLayout(layout)
 
     def update(self, source, target, data):
-        self.setWindowTitle("{0} → {1}".format(source, target))
+        self.setWindowTitle(u"{0} → {1}".format(source, target))
         self.table.clear()
         items = [QTreeWidgetItem(self.table, (synapse.name, synapse.type, synapse.size)) for synapse in data]
         self.table.addTopLevelItems(items)
@@ -111,12 +112,50 @@ class SynapseViewer(QWidget):
             if len(nodes) > 0:
                 skeleton.jump_to_node(nodes[0])
 
+# class NeuronModel(QAbstractListModel):
+#     def __init__(self, name, parent=None):
+#         QAbstractListModel.__init__(self, parent)
+#         self.neurons = OrderedSet()
+#         self.header = (name,)
+#
+#     def headerData(self, section, orientation, role):
+#         if orientation == Qt.Qt.Horizontal and role == Qt.Qt.DisplayRole:
+#             return self.header[section]
+#         else:
+#             return ""
+#
+#     def rowCount(self, parent=QModelIndex()):
+#         return len(self.neurons)
+#
+#     def data(self, index, role):
+#         if index.isValid():
+#             return self.neurons[index.row()]
+#         return ""
+#
+#     def setData(self, index, value, role):
+#         if index.isValid():
+#             if role == Qt.Qt.DisplayRole:
+#                 self.neurons[index.row()] = value.toString()
+#                 return True
+#         return True
+#
+#     def set_data(self, data):
+#         self.beginResetModel()
+#         self.neurons = data
+#         self.endResetModel()
+#         self.dataChanged.emit(self.index(0, 0), self.index(len(self.neurons)-1, 0))
+#
+# class MyTreeView(QTreeView):
+#     def __init__(self, parent=None):
+#         QTreeView.__init__(self, parent)
+#
+#     def dataChanged(self, topLeft, bottomRight, roles = QVector<int>):
 class NeuronView(object):
     """
     Data structure for synchronization between neuron data and their view
     """
     def __init__(self, name, context_menu, table_parent=None):
-        self.data = OrderedSet()
+        self._data = OrderedSet()
         self.items = OrderedSet()
         self.table = QTableWidget(table_parent)
         self.table.setColumnCount(1)
@@ -127,6 +166,14 @@ class NeuronView(object):
         self.table.setContextMenuPolicy(Qt.Qt.CustomContextMenu)
         self.table.customContextMenuRequested.connect(context_menu)
 
+    @property
+    def data(self):
+        return self._data
+
+    @data.setter
+    def data(self, data):
+        return
+
     def update_table(self):
         self.table.clearContents()
         self.table.setRowCount(len(self.data))
@@ -136,6 +183,8 @@ class NeuronView(object):
     def add(self, data):
         self.data |= data
         self.items = OrderedSet([QTableWidgetItem(element) for element in self.data])
+        for item in self.items:
+            item.setFlags(Qt.Qt.ItemIsSelectable | ~Qt.Qt.ItemIsEditable)
         self.update_table()
 
     def clear(self):
@@ -159,37 +208,43 @@ class MatrixEditor(QWidget):
     def __init__(self, parent=None):
         QWidget.__init__(self, parent)
         self.setWindowTitle("Matrix Editor")
+        # self.test_view = QTreeView(self)
+        # self.test_model = NeuronModel("Test neurons", self)
+        # self.test_view.setModel(self.test_model)
         self.total_view = NeuronView("All neurons", self.all_context_menu)
-        self.source_view = NeuronView("Pre-synaptic neurons", self.src_context_menu)
-        self.target_view = NeuronView("Post-synaptic neurons", self.target_context_menu)
+        self._source_view = NeuronView("Pre-synaptic neurons", self.src_context_menu)
+        self._target_view = NeuronView("Post-synaptic neurons", self.target_context_menu)
 
         self.clear_source_button = QPushButton("Clear")
         self.clear_target_button = QPushButton("Clear")
         self.reset_button = QPushButton("Reset matrix")
         self.apply_button = QPushButton("Apply")  # clicked event connected by parent window
 
-        layout = QGridLayout()
-        layout.addWidget(self.total_view.table, 0, 0, rowSpan=1, columnSpan=-1)
-        layout.addWidget(self.source_view.table, 1, 0)
-        layout.addWidget(self.target_view.table, 1, 1)
-        layout.addWidget(self.clear_source_button, 2, 0)
-        layout.addWidget(self.clear_target_button, 2, 1)
-        layout.addWidget(self.reset_button, 3, 0)
-        layout.addWidget(self.apply_button, 3, 1)
+        layout = QVBoxLayout()
+        layout.addWidget(self.total_view.table)
+        grid_layout = QGridLayout()
+        # layout.addWidget(self.test_view, 0, 1, rowSpan=1, columnSpan=-1)
+        grid_layout.addWidget(self._source_view.table, 0, 0)
+        grid_layout.addWidget(self._target_view.table, 0, 1)
+        grid_layout.addWidget(self.clear_source_button, 1, 0)
+        grid_layout.addWidget(self.clear_target_button, 1, 1)
+        grid_layout.addWidget(self.reset_button, 2, 0)
+        grid_layout.addWidget(self.apply_button, 2, 1)
+        layout.addLayout(grid_layout)
         self.setLayout(layout)
-        self.clear_source_button.clicked.connect(self.source_view.clear)
-        self.clear_target_button.clicked.connect(self.target_view.clear)
+        self.clear_source_button.clicked.connect(self._source_view.clear)
+        self.clear_target_button.clicked.connect(self._target_view.clear)
         self.reset_button.clicked.connect(self.default_view)
 
     def src_context_menu(self, pos):
         context_menu = QMenu()
-        context_menu.addAction("Remove from view", self.source_view.remove_selected)
-        context_menu.exec_(self.source_view.table.viewport().mapToGlobal(pos))
+        context_menu.addAction("Remove from view", self._source_view.remove_selected)
+        context_menu.exec_(self._source_view.table.viewport().mapToGlobal(pos))
 
     def target_context_menu(self, pos):
         context_menu = QMenu()
-        context_menu.addAction("Remove from view", self.target_view.remove_selected)
-        context_menu.exec_(self.target_view.table.viewport().mapToGlobal(pos))
+        context_menu.addAction("Remove from view", self._target_view.remove_selected)
+        context_menu.exec_(self._target_view.table.viewport().mapToGlobal(pos))
 
     def all_context_menu(self, pos):
         context_menu = QMenu()
@@ -197,27 +252,44 @@ class MatrixEditor(QWidget):
         context_menu.addAction("View in post-synaptic role", self.move_to_targets)
         context_menu.exec_(self.total_view.table.viewport().mapToGlobal(pos))
 
+    @property
+    def source_view(self):
+        return self._source_view.data
+
+    @source_view.setter
+    def source_view(self, value):
+        return
+
+    @property
+    def target_view(self):
+        return self._target_view.data
+
+    @target_view.setter
+    def target_view(self, value):
+        return
+
     def get_source(self, index):
-        return self.source_view.data[index]
+        return self._source_view.data[index]
 
     def get_target(self, index):
-        return self.target_view.data[index]
+        return self._target_view.data[index]
 
     def move_to_sources(self):
         new_source_neurons = {item.text() for item in self.total_view.table.selectedItems()}
-        self.source_view.add(new_source_neurons)
+        self._source_view.add(new_source_neurons)
 
     def move_to_targets(self):
         new_target_neurons = {item.text() for item in self.total_view.table.selectedItems()}
-        self.target_view.add(new_target_neurons)
+        self._target_view.add(new_target_neurons)
 
     def default_view(self):
         self.total_view.clear()
-        self.source_view.clear()
-        self.target_view.clear()
+        self._source_view.clear()
+        self._target_view.clear()
+        # self.test_model.set_data(Synapse.source_neurons | Synapse.target_neurons)
         self.total_view.add(Synapse.source_neurons | Synapse.target_neurons)
-        self.source_view.add(Synapse.source_neurons)
-        self.target_view.add(Synapse.target_neurons)
+        self._source_view.add(Synapse.source_neurons)
+        self._target_view.add(Synapse.target_neurons)
 
 class MatplotlibCanvas(FigureCanvas):
     """
@@ -251,11 +323,11 @@ class MatplotlibCanvas(FigureCanvas):
         self.sources = source_neurons
         self.targets = target_neurons
         # fill data matrix
-        self.synapse_matrix = np.zeros((len(source_neurons), len(target_neurons)), dtype=np.uint32)
+        self.synapse_matrix = np.zeros((len(self.sources), len(self.targets)), dtype=np.uint32)
         for neurons, synapse_list in Synapse.synapses.items():
             try:
-                row = source_neurons.index(neurons[0])
-                col = target_neurons.index(neurons[1])
+                row = self.sources.index(neurons[0])
+                col = self.targets.index(neurons[1])
                 self.synapse_matrix[row, col] = len(synapse_list)
             except ValueError:
                 continue
@@ -272,11 +344,11 @@ class MatplotlibCanvas(FigureCanvas):
         self.matrix_axes.set_xticks([])
         self.matrix_axes.set_yticks([])
         # place ticks at middle of each row / column
-        self.matrix_axes.set_xticks(np.arange(len(target_neurons)) + 0.5)
-        self.matrix_axes.set_yticks(np.arange(len(source_neurons)) + 0.5)
+        self.matrix_axes.set_xticks(np.arange(len(self.targets)) + 0.5)
+        self.matrix_axes.set_yticks(np.arange(len(self.sources)) + 0.5)
         # add tick labels
-        self.matrix_axes.set_yticklabels(source_neurons)
-        self.matrix_axes.set_xticklabels(target_neurons, rotation='vertical')
+        self.matrix_axes.set_yticklabels(self.sources)
+        self.matrix_axes.set_xticklabels(self.targets, rotation='vertical')
         # plot color bar
         bounds = np.arange(len(np.unique(self.synapse_matrix)) + 1)
         colorbar = self.figure.colorbar(color_mesh, cax=self.color_axes, orientation='vertical')
@@ -331,6 +403,8 @@ class ConnectivityViewer(QMainWindow):
         self.file_menu.addAction("Edit Matrix", show_matrix_editor)
 
         def quit_plugin(): self.close()
+        def hide_plugin(): self.hide()
+        self.file_menu.addAction("Hide", hide_plugin)
         self.file_menu.addAction("Quit", quit_plugin)
         self.menuBar().addMenu(self.file_menu)
 
@@ -397,12 +471,17 @@ class ConnectivityViewer(QMainWindow):
         num_synapses = self.matrix_canvas.synapse_matrix[src_index, target_index]
         source = self.matrix_canvas.sources[src_index]
         target = self.matrix_canvas.targets[target_index]
-        self.synapse_label.setText('"{0}" → "{1}": {2} Synapses'.format(source, target, num_synapses))
+        self.synapse_label.setText(u'"{0}" → "{1}": {2} Synapses'.format(source, target, num_synapses))
 
     def apply_new_view(self):
         editor = self.matrix_editor
-        self.matrix_canvas.build_connectivity_matrix(deepcopy(editor.source_view.data), deepcopy(editor.target_view.data))
-        editor.close()
+        if len(editor.source_view) > 1 and len(editor.target_view) > 1:
+            self.matrix_canvas.build_connectivity_matrix(deepcopy(editor.source_view), deepcopy(editor.target_view))
+            editor.close()
+        else:
+            message = QMessageBox.information(editor, "Empty view!",
+                                              "You need at least one neuron in the pre-synaptic and post-synaptic view.")
+            message.show()
 
     def plot_default_matrix(self):
         self.matrix_editor.default_view()
@@ -422,5 +501,10 @@ class ConnectivityViewer(QMainWindow):
         self.matrix_canvas.reset()
         Synapse.reset()
 
+    def hideEvent(self):
+        self.synapse_viewer.hide()
+        self.matrix_editor.hide()
+
     def closeEvent(self):
+        self.synapse_viewer.close()
         self.matrix_editor.close()

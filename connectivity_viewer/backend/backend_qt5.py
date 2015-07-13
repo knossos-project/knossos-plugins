@@ -26,7 +26,7 @@ except ImportError:
 
 from backend.qt_compat import QT_API, QT_API_PYTHONQT5, QT_API_PYQT5, QtCore, QtGui, QtWidgets, _getSaveFileName, __version__
 from backend.qt_editor.formsubplottool import UiSubplotTool
-from backend.signal import Signal
+from backend.my_signal import Signal
 
 backend_version = __version__
 

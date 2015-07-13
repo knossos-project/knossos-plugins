@@ -24,8 +24,7 @@ ETS = dict(pyqt=(QT_API_PYQTv2, 4), pyside=(QT_API_PYSIDE, 4),
 # default for Python 2.x.
 
 QT_API_ENV = os.environ.get('QT_API')
-print(rcParams['backend'])
-if rcParams['backend'] in ['Qt5Agg', 'module://backend_qt5agg']:
+if rcParams['backend'] in ['Qt5Agg', 'module://backend.backend_qt5agg']:
     QT_RC_MAJOR_VERSION = 5
 else:
     QT_RC_MAJOR_VERSION = 4
@@ -46,7 +45,7 @@ if (QT_API_ENV is not None):
 
 if QT_API is None:
     # No ETS environment or incompatible so use rcParams.
-    if rcParams['backend'] == 'module://backend_qt5agg':
+    if rcParams['backend'] == 'module://backend.backend_qt5agg':
         QT_API = QT_API_PYTHONQT5
     elif rcParams['backend'] == 'Qt5Agg':
         QT_API = rcParams['backend.qt5']
