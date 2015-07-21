@@ -1,5 +1,6 @@
 from PythonQt import QtGui, Qt
-import DatasetUtils, numpy, os, re, string, sys, traceback, Image, time
+import DatasetUtils, numpy, os, re, string, sys, traceback, time
+import PIL as Image
 from scipy import ndimage
 from skimage.morphology import watershed
 DatasetUtils._set_noprint(True)
