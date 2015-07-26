@@ -1,4 +1,5 @@
 from PythonQt import QtGui, Qt
+import KnossosModule
 import DatasetUtils, numpy, os, re, string, sys, traceback, time
 import PIL as Image
 from scipy import ndimage
@@ -273,8 +274,9 @@ Workflow
         Qt.QApplication.processEvents()
         return
 
-    def __init__(self, parent=knossos_global_mainwindow):
-        super(watershedCubeSegmentor, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
+    def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
+        super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
+        KnossosModule.plugin_container[main_class.__name__] = self
         self.initGUI()
         self.initLogic()
         return
@@ -353,8 +355,8 @@ Workflow
         self.settings = \
                       [(self.dirEdit,"DIR",""),
                         (self.baseSubObjIdEdit,"BASE_SUB_OBJ_ID","10000000"), \
-                        (self.workAreaBeginEdit,"WORK_AREA_BEGIN",str(knossos.getPosition())), \
-                        (self.workAreaSizeEdit,"WORK_AREA_SIZE",str(tuple([knossos.getCubeEdgeLength()]*3))), \
+                        (self.workAreaBeginEdit,"WORK_AREA_BEGIN",str(KnossosModule.knossos.getPosition())), \
+                        (self.workAreaSizeEdit,"WORK_AREA_SIZE",str(tuple([KnossosModule.knossos.getCubeEdgeLength()]*3))), \
                         (self.marginEdit,"MARGIN","0"), \
                         (self.markerRadiusEdit,"MARKER_RADIUS","3"), \
                         (self.memThresEdit,"MEM_THRES","150"), \
@@ -368,15 +370,15 @@ Workflow
         self.loadConfig()
         self.applyGuiConfig()
         self.signalConns = []
-        self.signalConns.append((signalRelay.Signal_EventModel_handleMouseReleaseMiddle, self.handleMouseReleaseMiddle))
+        self.signalConns.append((KnossosModule.signalRelay.Signal_EventModel_handleMouseReleaseMiddle, self.handleMouseReleaseMiddle))
         self.signalsConnect()
         return
 
     def uninitLogic(self):
         self.generateGuiConfig()
         self.saveConfig()
-        plugin_container.remove(self)
         self.signalsDisonnect()
+        del KnossosModule.plugin_container[main_class.__name__]
         return
 
     def closeEventYes(self,event):
@@ -520,7 +522,7 @@ Workflow
     def setActiveNode(self):
         Id = self.curObjId
         if self.IsNormalId(Id):
-            skeleton.set_active_node(self.mapIdToNodeId[Id])
+            KnossosModule.skeleton.set_active_node(self.mapIdToNodeId[Id])
         return
 
     def selectObjId(self, Id):
@@ -662,8 +664,8 @@ Workflow
     def TreeIdById(self,Id):
         if Id in self.mapIdToTreeId:
             return self.mapIdToTreeId[Id]
-        treeId = skeleton.findAvailableTreeID()
-        skeleton.add_tree(treeId)
+        treeId = KnossosModule.skeleton.findAvailableTreeID()
+        KnossosModule.skeleton.add_tree(treeId)
         self.mapIdToTreeId[Id] = treeId
         return treeId
 
@@ -690,8 +692,8 @@ Workflow
         return
 
     def addNode(self,coord,treeId,vpId):
-        nodeId = skeleton.findAvailableNodeID()
-        skeleton.add_node(*((nodeId,)+coord+(treeId,self.markerRadius,vpId,)))
+        nodeId = KnossosModule.skeleton.findAvailableNodeID()
+        KnossosModule.skeleton.add_node(*((nodeId,)+coord+(treeId,self.markerRadius,vpId,)))
         self.setActiveNode()
         return nodeId
 
@@ -778,7 +780,7 @@ Workflow
             isDone = self.mapIdToDone[Id]
             self.popTableStackId(isDone, Id)
             del self.mapIdToDone[Id]
-            skeleton.delete_tree(self.mapIdToTreeId[Id])
+            KnossosModule.skeleton.delete_tree(self.mapIdToTreeId[Id])
             del self.mapIdToTreeId[Id]
             del self.mapIdToNodeId[Id]
             del self.mapIdToSlack[Id]
@@ -897,13 +899,13 @@ Workflow
 
     def waitForLoader(self):
         busyScope = self.BusyCursorScope()
-        while not knossos_global_loader.isFinished():
+        while not KnossosModule.knossos_global_loader.isFinished():
             Qt.QApplication.processEvents()
             time.sleep(0)
         return
 
     def setPositionWrap(self, coord):
-        knossos.setPosition(coord)
+        KnossosModule.knossos.setPosition(coord)
         self.waitForLoader()
         return
 
@@ -975,7 +977,7 @@ Workflow
     def undoButtonClicked(self):
         if not self.IsMoreCoords():
             return
-        skeleton.delete_tree(self.mapIdToTreeId.pop(self.nextId()))
+        KnossosModule.skeleton.delete_tree(self.mapIdToTreeId.pop(self.nextId()))
         self.setActiveNode()
         self.moreCoords = []
         self.undoButton.enabled = False
@@ -1008,7 +1010,7 @@ Workflow
 
     def accessMatrix(self, matrix, isWrite):
         self.waitForLoader()
-        return knossos.processRegionByStridedBufProxy(list(self.knossos_beginCoord_arr), list(self.knossos_dims_arr), self.npDataPtr(matrix), matrix.strides, isWrite, True)
+        return KnossosModule.knossos.processRegionByStridedBufProxy(list(self.knossos_beginCoord_arr), list(self.knossos_dims_arr), self.npDataPtr(matrix), matrix.strides, isWrite, True)
 
     def writeMatrix(self, matrix):
         self.accessMatrix(matrix, True)
@@ -1043,7 +1045,7 @@ Workflow
         self.active = False
         map(self.clearTable,[False,True])
         for treeId in self.mapIdToTreeId.values():
-            skeleton.delete_tree(treeId)
+            KnossosModule.skeleton.delete_tree(treeId)
         self.guiEnd()
         self.endMatrices()
         return
@@ -1127,9 +1129,9 @@ Workflow
             if self.mapIdToSlack[Id] and (not self.IsSlackId(Id)):
                 self.WS[self.WS == Id] = self.slackObjId
                 continue
-            segmentation.subobjectFromId(Id, coord)
-            objIndex = segmentation.largestObjectContainingSubobject(Id,(0,0,0))
-            segmentation.changeComment(objIndex,"WatershedCubeSegmentor_" + {False:"Done",True:"Todo"}[self.mapIdToTodo[Id]])
+            KnossosModule.segmentation.subobjectFromId(Id, coord)
+            objIndex = KnossosModule.segmentation.largestObjectContainingSubobject(Id,(0,0,0))
+            KnossosModule.segmentation.changeComment(objIndex,"WatershedCubeSegmentor_" + {False:"Done",True:"Todo"}[self.mapIdToTodo[Id]])
         return
 
     def beginSeeds(self):
@@ -1190,7 +1192,7 @@ Workflow
             self.setPositionWrap(tuple(self.middleCoord_arr))
             self.beginSeeds()
             self.beginMatrices()
-            knossos.setMovementArea(list(self.knossos_beginCoord_arr), list(self.knossos_endCoord_arr))
+            KnossosModule.knossos.setMovementArea(list(self.knossos_beginCoord_arr), list(self.knossos_endCoord_arr))
             self.tableHash = {True:{"Stack":[],"Table":self.doneSubObjTable,"Click":self.doneSubObjTableCellClicked,"DoubleClick":self.doneSubObjTableCellDoubleClicked},\
                               False:{"Stack":[],"Table":self.pendSubObjTable,"Click":self.pendSubObjTableCellClicked,"DoubleClick":self.pendSubObjTableCellDoubleClicked}}
             self.guiBegin()
@@ -1207,7 +1209,7 @@ Workflow
     def resetButtonClicked(self):
         self.writeMatrix(self.orig)
         self.commonEnd()
-        knossos.resetMovementArea()
+        KnossosModule.knossos.resetMovementArea()
         return
 
     def finishButtonClicked(self):
@@ -1239,4 +1241,5 @@ Workflow
 
     pass
 
-plugin_container.append(watershedCubeSegmentor())
+main_class = watershedCubeSegmentor
+main_class()

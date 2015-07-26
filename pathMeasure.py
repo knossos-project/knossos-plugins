@@ -1,4 +1,5 @@
 from PythonQt import QtGui, Qt
+import KnossosModule
 from math import sqrt
 import networkx as nx
 import time
@@ -36,6 +37,7 @@ class pathMeasure(QtGui.QWidget):
         self.setTableHeaders(self.logTable, ["Date/Time", "Name", "Node #1", "Node #2", "Length", "Hops", "Path"])
         self.finalizeTable(self.logTable)
         # Show
+        self.setWindowFlags(Qt.Qt.Window)
         self.show()
         return
 
@@ -78,8 +80,8 @@ class pathMeasure(QtGui.QWidget):
         self.resizeTable(table)
         return
     
-    def __init__(self, parent=None):
-        super(pathMeasure, self).__init__(parent)
+    def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
+        super(pathMeasure, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
         self.initGUI()
         self.paths = []
         return
@@ -88,12 +90,12 @@ class pathMeasure(QtGui.QWidget):
         c1 = source.coordinate()
         c2 = target.coordinate()
         x, y, z = c1.x() - c2.x(), c1.y() - c2.y(), c1.z() - c2.z()
-        sx, sy, sz = knossos.getScale()
+        sx, sy, sz = KnossosModule.knossos.getScale()
         return sqrt(sum([(dim*dim) for dim in [x*sx, y*sy, z*sz]]))
 
     def getGraph(self):
         nxG = nx.Graph()
-        for tree in skeleton.trees():
+        for tree in KnossosModule.skeleton.trees():
             for node in tree.nodes():
                 nxG.add_node(node)
                 for segment in node.segments():
@@ -108,7 +110,7 @@ class pathMeasure(QtGui.QWidget):
     
     def findPathButtonClicked(self):
         nxG = self.getGraph()
-        sn = skeleton.selectedNodes()
+        sn = KnossosModule.skeleton.selectedNodes()
         if (len(sn) <> 2):
             QtGui.QMessageBox.information(0, "Error", "Select exactly two nodes")
             return
@@ -131,9 +133,9 @@ class pathMeasure(QtGui.QWidget):
     def selectPathButtonClicked(self):
         si = self.logTable.selectedIndexes()
         if len(si) > 0:
-            skeleton.selectNodes(self.paths[si[0].row()])
+            KnossosModule.skeleton.selectNodes(self.paths[si[0].row()])
         return
 
     pass
 
-plugin_container.append(pathMeasure())
+KnossosModule.plugin_container.append(pathMeasure())

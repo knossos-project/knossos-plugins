@@ -1,4 +1,5 @@
 from PythonQt import QtGui, Qt
+import KnossosModule
 import urllib, urllib2, os, urlparse, glob, time, inspect, tempfile
 
 #KNOSSOS_PLUGIN Name PluginMgr
@@ -506,4 +507,4 @@ Notes:
     
     pass
 
-plugin_container.append(pluginMgr())
+KnossosModule.plugin_container.append(pluginMgr())

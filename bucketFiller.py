@@ -1,4 +1,5 @@
 from PythonQt import QtGui, Qt
+import KnossosModule
 import DatasetUtils, numpy, os, re, string, sys, time, traceback
 from scipy import ndimage
 DatasetUtils._set_noprint(True)
@@ -70,20 +71,21 @@ Operation:
         self.show()
         return
 
-    def __init__(self, parent=knossos_global_mainwindow):
-        super(bucketFiller, self).__init__(parent)
+    def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
+        super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
+        KnossosModule.plugin_container[main_class.__name__] = self
         self.initGUI()
         self.initLogic()
         return
 
     def initLogic(self):
-        signalRelay.Signal_EventModel_handleMouseReleaseMiddle.connect(self.handleMouseReleaseMiddle)
-        self.pos_arr = numpy.array(knossos.getPosition())
+        KnossosModule.signalRelay.Signal_EventModel_handleMouseReleaseMiddle.connect(self.handleMouseReleaseMiddle)
+        self.pos_arr = numpy.array(KnossosModule.knossos.getPosition())
         return
     
     def handleMouseReleaseMiddle(self, eocd, coord, event):
         self.pos_arr = numpy.array(coord.vector())
-        knossos.setPosition(coord.vector())
+        KnossosModule.knossos.setPosition(coord.vector())
         return
     
     def instructionsButtonClicked(self):
@@ -111,10 +113,10 @@ Operation:
         return matrix.__array_interface__["data"][0]
 
     def writeMatrix(self, matrix):
-        return knossos.processRegionByStridedBufProxy(self.begin_arr, self.size_arr, self.npDataPtr(matrix), matrix.strides, True, True)
+        return KnossosModule.knossos.processRegionByStridedBufProxy(self.begin_arr, self.size_arr, self.npDataPtr(matrix), matrix.strides, True, True)
 
     def readMatrix(self, matrix):
-        return knossos.processRegionByStridedBufProxy(self.begin_arr, self.size_arr, self.npDataPtr(matrix), matrix.strides, False, False)
+        return KnossosModule.knossos.processRegionByStridedBufProxy(self.begin_arr, self.size_arr, self.npDataPtr(matrix), matrix.strides, False, False)
 
     def fillButtonClicked(self):
         path = self.validateDir(str(self.dirEdit.text))
@@ -154,4 +156,5 @@ Operation:
     
     pass
 
-plugin_container.append(bucketFiller())
+main_class = bucketFiller
+main_class()

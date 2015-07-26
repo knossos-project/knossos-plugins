@@ -1,5 +1,6 @@
 from PythonQt import QtGui, Qt
-import numpy, traceback, re, time
+import KnossosModule
+import numpy, traceback, re, time, sys
 from scipy import ndimage
 from skimage.morphology import watershed
 
@@ -127,8 +128,9 @@ Operation:
         self.resize(0,0)
         return
 
-    def __init__(self, parent=knossos_global_mainwindow):
-        super(watershedSplitter, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
+    def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
+        super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
+        KnossosModule.plugin_container[main_class.__name__] = self
         self.initGUI()
         self.initLogic()
         return
@@ -193,22 +195,26 @@ Operation:
         self.active = False
         self.pluginConf = "Plugin_WatershedSplitter"
         self.settings = [(self.baseSubObjIdEdit,"BASE_SUB_OBJ_ID","10000000"), \
-                        (self.workAreaSizeEdit,"WORK_AREA_SIZE",str(tuple([knossos.getCubeEdgeLength()*2]*3))), \
+                        (self.workAreaSizeEdit,"WORK_AREA_SIZE",str(tuple([KnossosModule.knossos.getCubeEdgeLength()*2]*3))), \
                         (self.markerRadiusEdit,"MARKER_RADIUS","1"), \
                        (self.widgetWidthEdit,"WIDGET_WIDTH", "0"), \
                        (self.widgetHeightEdit,"WIDGET_HEIGHT", "0")]
         self.loadConfig()
         self.applyGuiConfig()
         self.signalConns = []
-        self.signalConns.append((signalRelay.Signal_EventModel_handleMouseReleaseMiddle, self.handleMouseReleaseMiddle))
+        self.signalConns.append((KnossosModule.signalRelay.Signal_EventModel_handleMouseReleaseMiddle, self.handleMouseReleaseMiddle))
         self.signalsConnect()
         return
 
     def uninitLogic(self):
         self.generateGuiConfig()
         self.saveConfig()
-        plugin_container.remove(self)
         self.signalsDisonnect()
+        del KnossosModule.plugin_container[main_class.__name__]
+        return
+
+    def __del__(self):
+        print "dtor ", str(self)
         return
 
     def closeEventYes(self,event):
@@ -299,8 +305,8 @@ Operation:
     def TreeIdById(self,Id):
         if Id in self.mapIdToTreeId:
             return self.mapIdToTreeId[Id]
-        treeId = skeleton.findAvailableTreeID()
-        skeleton.add_tree(treeId)
+        treeId = KnossosModule.skeleton.findAvailableTreeID()
+        KnossosModule.skeleton.add_tree(treeId)
         self.mapIdToTreeId[Id] = treeId
         return treeId
 
@@ -310,8 +316,8 @@ Operation:
         return
 
     def addNode(self,coord,treeId,vpId):
-        nodeId = skeleton.findAvailableNodeID()
-        skeleton.add_node(*((nodeId,)+coord+(treeId,self.markerRadius,vpId,)))
+        nodeId = KnossosModule.skeleton.findAvailableNodeID()
+        KnossosModule.skeleton.add_node(*((nodeId,)+coord+(treeId,self.markerRadius,vpId,)))
         return nodeId
 
     def displayCoord(self,coord):
@@ -368,7 +374,7 @@ Operation:
         for Id in Ids:
             self.matrixDelId(Id,self.mapIdToSlack[Id])
             del self.mapIdToCoord[Id]
-            skeleton.delete_tree(self.mapIdToTreeId[Id])
+            KnossosModule.skeleton.delete_tree(self.mapIdToTreeId[Id])
             del self.mapIdToTreeId[Id]
             del self.mapIdToNodeId[Id]
             del self.mapIdToSlack[Id]
@@ -391,7 +397,7 @@ Operation:
 
     def waitForLoader(self):
         busyScope = self.BusyCursorScope()
-        while knossos_global_loader.getRefCount() > 0:
+        while not KnossosModule.knossos_global_loader.isFinished():
             Qt.QApplication.processEvents()
             time.sleep(0)
         return
@@ -461,7 +467,7 @@ Operation:
 
     def accessMatrix(self, matrix, isWrite):
         self.waitForLoader()
-        return knossos.processRegionByStridedBufProxy(list(self.beginCoord_arr), list(self.dims_arr), self.npDataPtr(matrix), matrix.strides, isWrite, True)
+        return KnossosModule.knossos.processRegionByStridedBufProxy(list(self.beginCoord_arr), list(self.dims_arr), self.npDataPtr(matrix), matrix.strides, isWrite, True)
 
     def writeMatrix(self, matrix):
         self.accessMatrix(matrix, True)
@@ -490,11 +496,11 @@ Operation:
         self.active = False
         self.clearTable()
         for treeId in self.mapIdToTreeId.values():
-            skeleton.delete_tree(treeId)
+            KnossosModule.skeleton.delete_tree(treeId)
         self.guiEnd()
         self.endMatrices()
         if not self.confined:
-            knossos.resetMovementArea()
+            KnossosModule.knossos.resetMovementArea()
         return
     
     def guiBegin(self):
@@ -541,9 +547,9 @@ Operation:
         self.mapIdToCoord[self.curObjId] = self.mapIdToCoord[firstId]
         for Id in nonSlackIds:
             coord = self.mapIdToCoord[Id]
-            segmentation.subobjectFromId(Id, coord)
-            objIndex = segmentation.largestObjectContainingSubobject(Id,(0,0,0))
-            segmentation.changeComment(objIndex,"WatershedSplitter")
+            KnossosModule.segmentation.subobjectFromId(Id, coord)
+            objIndex = KnossosModule.segmentation.largestObjectContainingSubobject(Id,(0,0,0))
+            KnossosModule.segmentation.changeComment(objIndex,"WatershedSplitter")
         return
 
     def beginSeeds(self):
@@ -571,7 +577,7 @@ Operation:
             self.dims_arr = numpy.array(self.str2tripint(str(self.workAreaSizeEdit.text)))
             self.baseSubObjId = long(str(self.baseSubObjIdEdit.text))
             self.markerRadius = int(self.markerRadiusEdit.text)
-            movementArea_arr = numpy.array(knossos.getMovementArea())
+            movementArea_arr = numpy.array(KnossosModule.knossos.getMovementArea())
             self.movementAreaBegin_arr, self.movementAreaEnd_arr = movementArea_arr[:3], movementArea_arr[3:]+1
             self.movementAreaSize_arr = self.movementAreaEnd_arr - self.movementAreaBegin_arr
             if self.isSizeSmaller(self.movementAreaSize_arr, self.dims_arr):
@@ -581,10 +587,10 @@ Operation:
                 self.endCoord_arr = self.movementAreaEnd_arr
             else:
                 self.confined = False
-                self.middleCoord_arr = numpy.array(knossos.getPosition())
+                self.middleCoord_arr = numpy.array(KnossosModule.knossos.getPosition())
                 self.beginCoord_arr = self.middleCoord_arr - (self.dims_arr/2)
                 self.endCoord_arr = self.beginCoord_arr + self.dims_arr
-                knossos.setMovementArea(list(self.beginCoord_arr), list(self.endCoord_arr))
+                KnossosModule.knossos.setMovementArea(list(self.beginCoord_arr), list(self.endCoord_arr))
             self.beginSeeds()
             self.beginMatrices()
             self.guiBegin()
@@ -608,4 +614,6 @@ Operation:
         self.commonEnd()
         return
 
-plugin_container.append(watershedSplitter())
+main_class = watershedSplitter
+instance = main_class()
+del instance
