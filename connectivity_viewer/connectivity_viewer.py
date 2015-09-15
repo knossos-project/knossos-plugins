@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 __author__ = 'tieni'
 
+import KnossosModule
 from copy import deepcopy
 import cProfile
 import matplotlib
@@ -10,7 +11,6 @@ from backend.my_signal import Signal
 from matplotlib import cm, colors
 from matplotlib.figure import Figure
 from mpl_toolkits.axes_grid1 import make_axes_locatable
-
 
 from networkx import read_graphml
 import numpy as np
@@ -88,7 +88,7 @@ class SynapseViewer(QWidget):
     """
     This widget lists all synapses between selected source and target neurons. Jump to the synapse by clicking on it.
     """
-    def __init__(self, parent=knossos_global_mainwindow):
+    def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
         super(SynapseViewer, self).__init__(parent)
         self.setWindowFlags(Qt.Qt.Window)
         self.table = QTreeWidget()
@@ -108,9 +108,9 @@ class SynapseViewer(QWidget):
     def jump_to_synapse(self, item, column):
         trees = skeleton.find_trees(item.text(0))
         if len(trees) > 0:
-            nodes = skeleton.find_nodes_in_tree(trees[0], "az")
+            nodes = KnossosModule.skeleton.find_nodes_in_tree(trees[0], "az")
             if len(nodes) > 0:
-                skeleton.jump_to_node(nodes[0])
+                KnossosModule.skeleton.jump_to_node(nodes[0])
 
 # class NeuronModel(QAbstractListModel):
 #     def __init__(self, name, parent=None):
@@ -384,7 +384,7 @@ class ConnectivityViewer(QMainWindow):
 
     synapse_file_loaded = Signal()
 
-    def __init__(self, parent=knossos_global_mainwindow):
+    def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
         super(ConnectivityViewer, self).__init__(parent)
         self.setWindowFlags(Qt.Qt.Window)
         self.setAttribute(Qt.Qt.WA_DeleteOnClose)
@@ -443,7 +443,7 @@ class ConnectivityViewer(QMainWindow):
                 if graph is None:
                     print("No synapse file found in", path)
                     return
-                skeleton.annotation_load(path, False)
+                KnossosModule.skeleton.annotation_load(path, False)
 
         else:  # ends with .graphml
             graph = read_graphml(path)
