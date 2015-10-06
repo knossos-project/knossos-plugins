@@ -8,8 +8,8 @@ import KnossosModule
 
 class dialog(QtGui.QDialog):
     def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
-        super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
-        KnossosModule.plugin_container[main_class.__name__] = self
+        super(dialog, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
+        KnossosModule.plugin_container[dialog.__name__] = self
         layout = QtGui.QVBoxLayout()
         self.setLayout(layout)
         pushMeButton = QtGui.QPushButton("Push Me")
@@ -18,12 +18,10 @@ class dialog(QtGui.QDialog):
         self.setWindowFlags(Qt.Qt.Window)
         self.show()
         return
-    
+
     def pushMeButtonClicked(self):
         QtGui.QMessageBox.information(0, "Push", "Me", QtGui.QMessageBox.Ok)
         return
     
     pass
-
-main_class = dialog
-main_class()
+KnossosModule.plugin_container['dialog'] = dialog()

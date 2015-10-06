@@ -507,4 +507,4 @@ Notes:
     
     pass
 
-KnossosModule.plugin_container.append(pluginMgr())
+KnossosModule.plugin_container['pm'] = pluginMgr()

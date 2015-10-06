@@ -138,4 +138,4 @@ class pathMeasure(QtGui.QWidget):
 
     pass
 
-KnossosModule.plugin_container.append(pathMeasure())
+KnossosModule.plugin_container['pathMeasure'] = pathMeasure()
