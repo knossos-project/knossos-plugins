@@ -162,7 +162,7 @@ class pluginMgr(QtGui.QWidget):
         self.show()
         return
 
-    def __init__(self, parent=None):
+    def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
         super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
         KnossosModule.plugin_container[main_class.__name__] = self
         self.initGUI()
