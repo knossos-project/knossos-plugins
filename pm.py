@@ -163,7 +163,8 @@ class pluginMgr(QtGui.QWidget):
         return
 
     def __init__(self, parent=None):
-        super(pluginMgr, self).__init__(parent)
+        super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
+        KnossosModule.plugin_container[main_class.__name__] = self
         self.initGUI()
         self.initLogic()
         return
@@ -507,4 +508,5 @@ Notes:
     
     pass
 
-KnossosModule.plugin_container['pm'] = pluginMgr()
+main_class = pluginMgr
+main_class()

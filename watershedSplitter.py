@@ -615,5 +615,4 @@ Operation:
         return
 
 main_class = watershedSplitter
-instance = main_class()
-del instance
+main_class()
