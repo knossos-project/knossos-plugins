@@ -5,23 +5,17 @@ import networkx as nx
 import time
 import sys
 
+#KNOSSOS_PLUGIN Name CatmaidConnector
+#KNOSSOS_PLUGIN Version 1
+#KNOSSOS_PLUGIN Description Connect and interact with a Django-based catmaid backend to retrieve and upload skeletons
+
 # little shortcut for fast dev
 connectome_analysis_toolbox_path = 'C:/repos/CAT/'
 sys.path.append(connectome_analysis_toolbox_path)
 
 from cat.connection import Connection
-
-
 from cat import morphology
-skeleton = morphology.get_skeleton(c, SKELETON_ID )
 
-from cat import labeling, features
-labeling.update_skeleton_edge_with_distance( skeleton )
-print features.get_total_cable_length( skeleton )
-
-#KNOSSOS_PLUGIN Name CatmaidConnector
-#KNOSSOS_PLUGIN Version 1
-#KNOSSOS_PLUGIN Description Connect and interact with a Django-based catmaid backend to retrieve and upload skeletons
 
 class CatConnect(QtGui.QWidget):
     def initGUI(self):
@@ -31,13 +25,21 @@ class CatConnect(QtGui.QWidget):
         self.setWindowTitle("Catmaid Connector")
         layout = QtGui.QVBoxLayout()
         self.setLayout(layout)
-        nameLayout = QtGui.QHBoxLayout()
-        layout.addLayout(nameLayout)
-        nameLayout.addWidget(QtGui.QLabel("Enter instance URL: "))
-        self.nameEdit = QtGui.QLineEdit()
-        nameLayout.addWidget(self.nameEdit)
+        #nameLayout = QtGui.QHBoxLayout()
+        #layout.addLayout(nameLayout)
+        #nameLayout.addWidget(QtGui.QLabel("Enter instance URL: "))
+        #self.nameEdit = QtGui.QLineEdit()
+        #nameLayout.addWidget(self.nameEdit)
         buttonLayout = QtGui.QHBoxLayout()
         layout.addLayout(buttonLayout)
+
+        connect_button = QtGui.QPushButton("Connect to catmaid")
+        layout.addWidget(connect_button)
+        connect_button.clicked.connect(self.connect_instance)
+
+        get_skel_button = QtGui.QPushButton("Get skeleton")
+        layout.addWidget(get_skel_button)
+        get_skel_button.clicked.connect(self.get_skeleton_clicked)
 
         #
         # selectPathButton = QtGui.QPushButton("Select Nodes")
@@ -100,13 +102,6 @@ class CatConnect(QtGui.QWidget):
         self.paths = []
         return
 
-    # def distance_scaled(self, source, target):
-    #     c1 = source.coordinate()
-    #     c2 = target.coordinate()
-    #     x, y, z = c1.x() - c2.x(), c1.y() - c2.y(), c1.z() - c2.z()
-    #     sx, sy, sz = KnossosModule.knossos.getScale()
-    #     return sqrt(sum([(dim*dim) for dim in [x*sx, y*sy, z*sz]]))
-
     def getGraph(self):
         nxG = nx.Graph()
         for tree in KnossosModule.skeleton.trees():
@@ -118,13 +113,35 @@ class CatConnect(QtGui.QWidget):
         return nxG
 
     def connect_instance(self):
-        c = Connection( CATMAID_URL, USERNAME, PASSWORD, CATMAID_PROJECT_ID )
-        c.login()
+        CATMAID_URL = 'http://localhost:9000'
+        USERNAME = 'cat_root'
+        PASSWORD = 'catcat'
+        CATMAID_PROJECT_ID = 2
+        self.active_connection = Connection( CATMAID_URL, USERNAME, PASSWORD, CATMAID_PROJECT_ID )
+        QtGui.QMessageBox.information(0, "Success", "You are connected", QtGui.QMessageBox.Ok)
+        self.active_connection.login()
 
-    # def clearClicked(self):
-    #     self.clearTable(self.logTable)
-    #     self.paths = []
-    #     return
+    def get_skeleton(self, skel_id):
+        skel_id = 41
+        if self.active_connection:
+            skeleton = self.active_connection.fetch('{0}/1/1/compact-skeleton'.format(41))
+            #skeleton = morphology.get_skeleton(self.active_connection, skel_id )
+        else:
+            QtGui.QMessageBox.information(0, "Error", "Connect first", QtGui.QMessageBox.Ok)
+        KnossosModule.skeleton.add_tree(1)
+        # add nodes
+        for n in skeleton[0]:
+            KnossosModule.skeleton.add_node(int(n[0]), int(n[3]),int(n[4]),int(n[5]), 1)
+
+        # add edges
+        for e in skeleton[0]:
+            if e[0] and e[1]:
+                KnossosModule.skeleton.add_segment(int(e[0]), int(e[1]))
+
+
+    def get_skeleton_clicked(self):
+         self.get_skeleton(self)
+         return
     #
     # def findPathButtonClicked(self):
     #     nxG = self.getGraph()
