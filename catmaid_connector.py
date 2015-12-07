@@ -97,7 +97,7 @@ class main_class(QtGui.QWidget):
     
     def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
         super(main_class, self).__init__(parent)
-		exec(KnossosModule.scripting.getInstanceInContainerStr(__name__) + " = self")
+        exec(KnossosModule.scripting.getInstanceInContainerStr(__name__) + " = self")
         self.initGUI()
         self.paths = []
         return
