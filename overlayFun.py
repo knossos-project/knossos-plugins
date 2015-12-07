@@ -4,15 +4,14 @@ from random import randint
 from math import sqrt
 import numpy
 
-#KNOSSOS_PLUGIN Name OverlayFun
-#KNOSSOS_PLUGIN Version 1
-#KNOSSOS_PLUGIN Description Constantly paints and unpaints radial overlay circles at position selected by mouse middle-click
+#KNOSSOS_PLUGIN	Version	1
+#KNOSSOS_PLUGIN	Description	Constantly paints and unpaints radial overlay circles at position selected by mouse middle-click
 
-class overlayPainter(QtGui.QWidget):
+class main_class(QtGui.QWidget):
     TIMER_BUTTON_STRS = ["Paused", "Works"]
     def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
-        super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
-        KnossosModule.plugin_container[main_class.__name__] = self
+        super(main_class, self).__init__(parent)
+        exec(KnossosModule.scripting.getInstanceInContainerStr(__name__) + " = self")
         # Logic
         self.radius = 20
         self.position = KnossosModule.knossos.getPosition()
@@ -187,6 +186,3 @@ class overlayPainter(QtGui.QWidget):
         return
     
     pass
-
-main_class = overlayPainter
-main_class()

@@ -4,11 +4,10 @@ from math import sqrt
 import networkx as nx
 import time
 
-#KNOSSOS_PLUGIN Name PathMeasure
-#KNOSSOS_PLUGIN Version 1
-#KNOSSOS_PLUGIN Description Find path between two selected nodes, and calculate the physical length (in nanometers)
+#KNOSSOS_PLUGIN	Version	1
+#KNOSSOS_PLUGIN	Description	Find path between two selected nodes, and calculate the physical length (in nanometers)
 
-class pathMeasure(QtGui.QWidget):
+class main_class(QtGui.QWidget):
     def initGUI(self):
         self.twiHeadersList = []
         self.twiHash = {}
@@ -81,8 +80,8 @@ class pathMeasure(QtGui.QWidget):
         return
     
     def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
-        super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
-        KnossosModule.plugin_container[main_class.__name__] = self
+        super(main_class, self).__init__(parent)
+        exec(KnossosModule.scripting.getInstanceInContainerStr(__name__) + " = self")
         self.initGUI()
         self.paths = []
         return
@@ -138,6 +137,3 @@ class pathMeasure(QtGui.QWidget):
         return
 
     pass
-
-main_class = pathMeasure
-main_class()

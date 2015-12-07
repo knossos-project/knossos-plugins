@@ -5,9 +5,8 @@ import networkx as nx
 import time
 import sys
 
-#KNOSSOS_PLUGIN Name CatmaidConnector
-#KNOSSOS_PLUGIN Version 1
-#KNOSSOS_PLUGIN Description Connect and interact with a Django-based catmaid backend to retrieve and upload skeletons
+#KNOSSOS_PLUGIN	Version	1
+#KNOSSOS_PLUGIN	Description	Connect and interact with a Django-based catmaid backend to retrieve and upload skeletons
 
 # little shortcut for fast dev
 connectome_analysis_toolbox_path = 'C:/repos/CAT/'
@@ -17,7 +16,7 @@ from cat.connection import Connection
 from cat import morphology
 
 
-class CatConnect(QtGui.QWidget):
+class main_class(QtGui.QWidget):
     def initGUI(self):
         self.twiHeadersList = []
         self.twiHash = {}
@@ -97,7 +96,8 @@ class CatConnect(QtGui.QWidget):
     #     return
     
     def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
-        super(CatConnect, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
+        super(main_class, self).__init__(parent)
+		exec(KnossosModule.scripting.getInstanceInContainerStr(__name__) + " = self")
         self.initGUI()
         self.paths = []
         return
@@ -172,5 +172,3 @@ class CatConnect(QtGui.QWidget):
     #     return
 
     pass
-
-KnossosModule.plugin_container['CatConnect'] = CatConnect()

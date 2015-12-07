@@ -4,11 +4,10 @@ import DatasetUtils, numpy, os, re, string, sys, time, traceback
 from scipy import ndimage
 DatasetUtils._set_noprint(True)
 
-#KNOSSOS_PLUGIN Name BucketFiller
-#KNOSSOS_PLUGIN Version 1
-#KNOSSOS_PLUGIN Description Iteratively bucket fill a segmentation object based on a pre-calculated membrane prediction
+#KNOSSOS_PLUGIN	Version	1
+#KNOSSOS_PLUGIN	Description	Iteratively bucket fill a segmentation object based on a pre-calculated membrane prediction
 
-class bucketFiller(QtGui.QWidget):
+class main_class(QtGui.QWidget):
     INSTRUCTION_TEXT_STR = """Fill configuration:
 - Pick membrane prediction dataset by browsing to directory of knossos.conf
 - Base subobject ID for subobjects to be created
@@ -72,8 +71,8 @@ Operation:
         return
 
     def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
-        super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
-        KnossosModule.plugin_container[main_class.__name__] = self
+        super(main_class, self).__init__(parent)
+        exec(KnossosModule.scripting.getInstanceInContainerStr(__name__) + " = self")
         self.initGUI()
         self.initLogic()
         return
@@ -155,6 +154,3 @@ Operation:
         return
     
     pass
-
-main_class = bucketFiller
-main_class()

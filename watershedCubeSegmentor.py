@@ -7,11 +7,10 @@ from skimage.morphology import watershed
 DatasetUtils._set_noprint(True)
 from matplotlib import pyplot as plt
 
-#KNOSSOS_PLUGIN Name WatershedCubeSegmentor
-#KNOSSOS_PLUGIN Version 1
-#KNOSSOS_PLUGIN Description Iteratively split a volume into subobjects using a watershed algorithm on a pre-calculated prediction
+#KNOSSOS_PLUGIN	Version	1
+#KNOSSOS_PLUGIN	Description	Iteratively split a volume into subobjects using a watershed algorithm on a pre-calculated prediction
 
-class watershedCubeSegmentor(QtGui.QWidget):
+class main_class(QtGui.QWidget):
     INSTRUCTION_TEXT_STR = """
 Concept:
 
@@ -276,7 +275,7 @@ Workflow
 
     def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
         super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
-        KnossosModule.plugin_container[main_class.__name__] = self
+        exec(KnossosModule.scripting.getInstanceInContainerStr(__name__) + " = self")
         self.initGUI()
         self.initLogic()
         return
@@ -378,7 +377,7 @@ Workflow
         self.generateGuiConfig()
         self.saveConfig()
         self.signalsDisonnect()
-        del KnossosModule.plugin_container[main_class.__name__]
+        KnossosModule.scripting.removePluginInstance(__name__)
         return
 
     def closeEventYes(self,event):
@@ -1240,6 +1239,3 @@ Workflow
         return self.exportMatrix(self.WS,p,noMargin)
 
     pass
-
-main_class = watershedCubeSegmentor
-main_class()

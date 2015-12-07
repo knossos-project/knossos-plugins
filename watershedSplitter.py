@@ -4,11 +4,10 @@ import numpy, traceback, re, time, sys
 from scipy import ndimage
 from skimage.morphology import watershed
 
-#KNOSSOS_PLUGIN Name WatershedSplitter
-#KNOSSOS_PLUGIN Version 1
-#KNOSSOS_PLUGIN Description Splits a misannotated cell into constituent cells using a watershed algorithm on a background distance transform, supplemented by manual border seeding
+#KNOSSOS_PLUGIN	Version	1
+#KNOSSOS_PLUGIN	Description	Splits a misannotated cell into constituent cells using a watershed algorithm on a background distance transform, supplemented by manual border seeding
 
-class watershedSplitter(QtGui.QWidget):
+class main_class(QtGui.QWidget):
     INSTRUCTION_TEXT_STR = """
 Concept:
 
@@ -130,7 +129,7 @@ Operation:
 
     def __init__(self, parent=KnossosModule.knossos_global_mainwindow):
         super(main_class, self).__init__(parent, Qt.Qt.WA_DeleteOnClose)
-        KnossosModule.plugin_container[main_class.__name__] = self
+        exec(KnossosModule.scripting.getInstanceInContainerStr(__name__) + " = self")
         self.initGUI()
         self.initLogic()
         return
@@ -210,7 +209,7 @@ Operation:
         self.generateGuiConfig()
         self.saveConfig()
         self.signalsDisonnect()
-        del KnossosModule.plugin_container[main_class.__name__]
+        KnossosModule.scripting.removePluginInstance(__name__)
         return
 
     def __del__(self):
@@ -613,6 +612,3 @@ Operation:
         self.writeMatrix(self.orig)
         self.commonEnd()
         return
-
-main_class = watershedSplitter
-main_class()
