@@ -19,7 +19,6 @@ class main_class(QtGui.QWidget):
         self.orig = self.emptyData()
         self.ours = self.emptyData()
         # GUI
-        super(overlayPainter, self).__init__(parent)
         self.setWindowTitle("Overlay Fun")
         layout = QtGui.QVBoxLayout()
         self.setLayout(layout)
