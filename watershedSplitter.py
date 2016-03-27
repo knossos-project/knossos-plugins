@@ -547,7 +547,8 @@ Operation:
         for Id in nonSlackIds:
             coord = self.mapIdToCoord[Id]
             KnossosModule.segmentation.subobjectFromId(Id, coord)
-            objIndex = KnossosModule.segmentation.largestObjectContainingSubobject(Id,(0,0,0))
+            objId = KnossosModule.segmentation.largestObjectContainingSubobject(Id,(0,0,0))
+            objIndex = KnossosModule.segmentation.objectIdxFromId(objId)
             KnossosModule.segmentation.changeComment(objIndex,"WatershedSplitter")
         return
 
