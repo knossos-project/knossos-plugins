@@ -1130,8 +1130,7 @@ Workflow
                 continue
             KnossosModule.segmentation.subobjectFromId(Id, coord)
             objId = KnossosModule.segmentation.largestObjectContainingSubobject(Id,(0,0,0))
-            objIndex = KnossosModule.segmentation.objectIdxFromId(objId)
-            KnossosModule.segmentation.changeComment(objIndex,"WatershedCubeSegmentor_" + {False:"Done",True:"Todo"}[self.mapIdToTodo[Id]])
+            KnossosModule.segmentation.changeComment(objId,"WatershedCubeSegmentor_" + {False:"Done",True:"Todo"}[self.mapIdToTodo[Id]])
         return
 
     def beginSeeds(self):
