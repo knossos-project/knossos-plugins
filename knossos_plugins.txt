@@ -1,0 +1,8 @@
+URL	Version	Description
+http://knossos-project.github.io/knossos-plugins/dialog.py	1	Dialog
+http://knossos-project.github.io/knossos-plugins/pathMeasure.py	1	Path Measure
+http://knossos-project.github.io/knossos-plugins/overlayFun.py	1	Fun with overlay
+http://knossos-project.github.io/knossos-plugins/watershedCubeSegmentor.py	1	Segment a cube using watershed
+http://knossos-project.github.io/knossos-plugins/watershedSplitter.py	1	Split an object using watershed
+http://knossos-project.github.io/knossos-plugins/bucketFiller.py	1	Bucket-fill a membrane closure
+http://knossos-project.github.io/knossos-plugins/catmaid_connector.py	1	Connect and interact with a Django-based catmaid backend to retrieve and upload skeletons
