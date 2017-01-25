@@ -1,8 +1,9 @@
 from PythonQt import QtGui, Qt
 import KnossosModule
-import DatasetUtils, numpy, os, re, string, sys, time, traceback
+import numpy, os, re, string, sys, time, traceback
 from scipy import ndimage
-DatasetUtils._set_noprint(True)
+from knossos_utils import knossosdataset, KnossosDataset
+knossosdataset._set_noprint(True)
 
 #KNOSSOS_PLUGIN	Version	1
 #KNOSSOS_PLUGIN	Description	Iteratively bucket fill a segmentation object based on a pre-calculated membrane prediction
@@ -126,7 +127,7 @@ Operation:
         pos_off_arr = self.size_arr/2
         self.begin_arr = self.pos_arr - pos_off_arr
         
-        memPredDataset = DatasetUtils.knossosDataset()
+        memPredDataset = KnossosDataset.knossosDataset()
         memPredDataset.initialize_from_knossos_path(path)
         memPred = memPredDataset.from_cubes_to_matrix(self.size_arr, self.begin_arr, type='raw')
 	

@@ -1,11 +1,12 @@
 from PythonQt import QtGui, Qt
 import KnossosModule
-import DatasetUtils, numpy, os, re, string, sys, traceback, time
+import numpy, os, re, string, sys, traceback, time
 import PIL as Image
 from scipy import ndimage
 from skimage.morphology import watershed
-DatasetUtils._set_noprint(True)
 from matplotlib import pyplot as plt
+from knossos_utils import knossosdataset, KnossosDataset
+knossosdataset._set_noprint(True)
 
 #KNOSSOS_PLUGIN	Version	1
 #KNOSSOS_PLUGIN	Description	Iteratively split a volume into subobjects using a watershed algorithm on a pre-calculated prediction
@@ -282,7 +283,7 @@ Workflow
 
     def loadMembranePrediction(self, path, offset, size):
         # Load membrane prediction
-        membraneDataset = DatasetUtils.knossosDataset()
+        membraneDataset = KnossosDataset.knossosDataset()
         membraneDataset.initialize_from_knossos_path(path)
         memPred = membraneDataset.from_cubes_to_matrix(size, offset, type='raw')
         return numpy.invert(memPred > self.memThres)
