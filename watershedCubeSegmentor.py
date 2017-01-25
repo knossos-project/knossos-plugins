@@ -378,7 +378,7 @@ Workflow
         self.generateGuiConfig()
         self.saveConfig()
         self.signalsDisonnect()
-        KnossosModule.scripting.removePluginInstance(__name__)
+        KnossosModule.scripting.removePluginInstance(__name__, False)
         return
 
     def closeEventYes(self,event):
